@@ -1,5 +1,5 @@
 /* eslint-disable no-unused-vars */
-/* BSC Up Hình FB — v6-claude-enhanced */
+/* v6-schedule-drive-adjust */
 import { useState, useRef, useCallback, useEffect } from "react";
 
 const AGENCY_DEFAULT = "Blue Sky Corporation";
@@ -22,6 +22,7 @@ const ADJUST_BTNS = [
 const ALL_DAYS = ["Thứ Hai","Thứ Ba","Thứ Tư","Thứ Năm","Thứ Sáu","Thứ Bảy","Chủ Nhật"];
 const FIXED_DAYS = ["Thứ Hai","Thứ Tư","Thứ Sáu","Thứ Bảy","Chủ Nhật"];
 const GOLDEN_TIMES = ["08:00","12:00","17:30","20:00","21:00"];
+const OPTIMAL_TIMES = ["07:00","08:00","09:00","11:00","12:00","13:00","17:00","17:30","19:00","20:00","21:00"];
 const CAPTION_LABELS = { hook:"🎣 Hook", story:"📖 Câu chuyện", cta:"📣 Call-to-Action", short:"⚡ Ngắn gọn" };
 
 const STEPS = [
@@ -50,27 +51,23 @@ function guessInfo(name) {
     objective: "",
     kpi: "",
     region: "TP. Hồ Chí Minh",
-    agency: (typeof localStorage !== 'undefined' && localStorage.getItem("agency_name")) || AGENCY_DEFAULT,
+    agency: localStorage.getItem("agency_name") || AGENCY_DEFAULT,
     note: "",
   };
-}
-
-function safeLocalGet(key, fallback = "") {
-  try { return localStorage.getItem(key) || fallback; } catch { return fallback; }
-}
-function safeLocalSet(key, val) {
-  try { localStorage.setItem(key, val); } catch {}
 }
 
 async function adjustCaption(currentCaption, direction, groqKey) {
   const dirMap = {
     shorter:    "Viết lại NGẮN HƠN 30-40%, giữ nguyên thông tin quan trọng và hashtags.",
+    longer:     "Viết lại DÀI HƠN 40-50%, thêm chi tiết cảm xúc, bối cảnh và storytelling.",
     impressive: "Viết lại ẤN TƯỢNG HƠN: mạnh hơn, táo bạo hơn, hook mạnh hơn, cảm xúc cao hơn.",
     serious:    "Viết lại NGHIÊM TÚC HƠN: trang trọng, chuyên nghiệp, B2B tone, bỏ emoji vui.",
+    fun:        "Viết lại VUI HƠN: thêm emoji, ngôn ngữ trẻ trung, gần gũi, năng động.",
+    complete:   "Viết lại ĐẦY ĐỦ HƠN: bổ sung thêm thông tin brand, kết quả, địa điểm.",
   };
   const prompt = `Bạn là senior copywriter agency BTL Việt Nam.\n\nCaption hiện tại:\n"${currentCaption}"\n\nYêu cầu: ${dirMap[direction]}\n\nGiữ nguyên: thông tin brand, tên chương trình, KPI, khu vực, hashtags.\nTrả về CHỈ caption mới, KHÔNG giải thích, KHÔNG markdown.`;
   try {
-    const key = groqKey || safeLocalGet("groq_key");
+    const key = groqKey || localStorage.getItem("groq_key") || "";
     if (!key) throw new Error("no key");
     const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${key}`},
@@ -105,16 +102,20 @@ YÊU CẦU QUAN TRỌNG:
 - KHÔNG viết chung chung — phải có số liệu/địa điểm/tên cụ thể
 
 Tạo 4 caption Facebook:
+
 1. "hook" – 2-3 câu mở đầu cực mạnh, gây tò mò hoặc shock, kết quả nổi bật nhất, emoji phù hợp tone
-2. "story" – 10-14 câu đầy đủ ngữ cảnh: mô tả bối cảnh brief ban đầu → thách thức → ý tưởng sáng tạo → quá trình thực thi → kết quả cụ thể (số liệu, KPI) → cảm xúc/phản hồi từ khách hàng/người tham dự.
+
+2. "story" – 10-14 câu đầy đủ ngữ cảnh: mô tả bối cảnh brief ban đầu → thách thức → ý tưởng sáng tạo → quá trình thực thi → kết quả cụ thể (số liệu, KPI) → cảm xúc/phản hồi từ khách hàng/người tham dự. Phải có: mục tiêu ban đầu, KPI đạt được, thông tin liên quan đến nhãn hàng
+
 3. "cta" – 5-6 câu: highlight thành tích cụ thể + điểm mạnh agency + kêu gọi hợp tác rõ ràng
+
 4. "short" – 2-3 câu súc tích + 6-8 hashtags liên quan brand/ngành/khu vực
 
 Hashtags ở tất cả 4 loại caption. JSON duy nhất KHÔNG markdown:
 {"hook":"...","story":"...","cta":"...","short":"..."}`;
 
   try {
-    const key = groqKey || safeLocalGet("groq_key");
+    const key = groqKey || localStorage.getItem("groq_key") || "";
     if (!key) throw new Error("no key");
     const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${key}`},
@@ -154,16 +155,24 @@ export default function App() {
   const [expandedProj, setExpandedProj] = useState(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [customTimeInput, setCustomTimeInput] = useState({});
-  const [scheduleEdit, setScheduleEdit] = useState(null);
-  const [groqKey, setGroqKey] = useState(()=>safeLocalGet("groq_key"));
-  const [fbPageId, setFbPageId] = useState(()=>safeLocalGet("fb_page_id"));
-  const [fbPageToken, setFbPageToken] = useState(()=>safeLocalGet("fb_page_token"));
-  const [fbPageUrl, setFbPageUrl] = useState(()=>safeLocalGet("fb_page_url"));
-  const [agencyName, setAgencyName] = useState(()=>safeLocalGet("agency_name",AGENCY_DEFAULT));
+  const [scheduleEdit, setScheduleEdit] = useState(null); // {projId, day, time} - for editing approved posts
+  const [pendingSchedule, setPendingSchedule] = useState({}); // temp day/time before confirm
+  const [groqKey, setGroqKey] = useState(()=>localStorage.getItem("groq_key")||"")
+  // Set defaults if not already set
+  useEffect(()=>{
+    if(!localStorage.getItem("gdrive_folder_id")) localStorage.setItem("gdrive_folder_id","1oxxpjvAdQxe0pRYwFbPxoSDFnUQpyCRf");
+    if(!localStorage.getItem("fb_page_url")) localStorage.setItem("fb_page_url","https://www.facebook.com/BlueSkyCorporation.BelowTheLine.Agency");
+    if(!localStorage.getItem("agency_name")) localStorage.setItem("agency_name","Blue Sky Corporation");
+  },[]);
+  const [fbPageId, setFbPageId] = useState(()=>localStorage.getItem("fb_page_id")||"");
+  const [fbPageToken, setFbPageToken] = useState(()=>localStorage.getItem("fb_page_token")||"");
+  const [fbPageUrl, setFbPageUrl] = useState(()=>localStorage.getItem("fb_page_url")||"https://www.facebook.com/BlueSkyCorporation.BelowTheLine.Agency");
+  const [agencyName, setAgencyName] = useState(()=>localStorage.getItem("agency_name")||AGENCY_DEFAULT);
   const fileInputRef = useRef();
 
   const showToast = (msg, type="ok") => { setToast({msg,type}); setTimeout(()=>setToast(null),4000); };
 
+  // Khi đổi tone → tự động regen tất cả captions
   const handleToneChange = async (projId, newTone) => {
     updateProj(projId, {tone: newTone});
     const proj = projects.find(p=>p.id===projId);
@@ -253,9 +262,8 @@ export default function App() {
     if (!fbPageToken) { showToast("Chưa cấu hình Facebook Token!","err"); return; }
     setLoading(true);
     try {
-      const pageId = fbPageId || "me";
       const body=new URLSearchParams({message:post.customCaption,access_token:fbPageToken});
-      const res=await fetch(`https://graph.facebook.com/v19.0/${pageId}/feed`,{method:"POST",body});
+      const res=await fetch("https://graph.facebook.com/v19.0/me/feed",{method:"POST",body});
       const data=await res.json();
       if(data.id){updatePost(post.id,{fbPostId:data.id,posted:true});showToast("🚀 Đã đăng lên Facebook!");}
       else showToast("FB lỗi: "+(data.error?.message||"Không rõ"),"err");
@@ -267,9 +275,8 @@ export default function App() {
     if (!fbPageToken) { showToast("Chưa cấu hình Facebook Token!","err"); return; }
     setLoading(true);
     try {
-      const pageId = fbPageId || "me";
       const body=new URLSearchParams({message:post.customCaption,access_token:fbPageToken});
-      const res=await fetch(`https://graph.facebook.com/v19.0/${pageId}/feed`,{method:"POST",body});
+      const res=await fetch("https://graph.facebook.com/v19.0/me/feed",{method:"POST",body});
       const data=await res.json();
       if(data.id){updatePost(post.id,{fbPostId:data.id,posted:true});showToast("⚡ Đã đăng ngay lên Facebook!");}
       else showToast("FB lỗi: "+(data.error?.message||"Không rõ"),"err");
@@ -283,51 +290,46 @@ export default function App() {
 
   return (
     <div style={s.root}>
-      {/* ── HEADER ── */}
+      {/* NAV */}
       <nav style={s.nav}>
         <div style={s.navLeft}>
-          <div style={s.logoWrap}>
-            <span style={s.logoIcon}>📸</span>
-            <span style={s.brand}>{agencyName}</span>
-            <span style={s.appTag}>Auto Post</span>
-          </div>
+          <span style={s.brand}>📸 {agencyName}</span>
           {projects.length>0&&(
             <div style={s.navStats}>
               <span style={s.statChip}>{projects.length} dự án</span>
-              {pendingCount>0&&<span style={{...s.statChip,background:"rgba(255,152,0,.25)",color:"#ffe082"}}>{pendingCount} chờ duyệt</span>}
-              {approvedCount>0&&<span style={{...s.statChip,background:"rgba(76,175,80,.25)",color:"#a5d6a7"}}>{approvedCount} đã duyệt</span>}
-              {postedCount>0&&<span style={{...s.statChip,background:"rgba(33,150,243,.25)",color:"#90caf9"}}>{postedCount} đã đăng</span>}
+              {pendingCount>0&&<span style={{...s.statChip,background:"#fff3e0",color:"#e65100"}}>{pendingCount} chờ duyệt</span>}
+              {approvedCount>0&&<span style={{...s.statChip,background:"#e8f5e9",color:"#2e7d32"}}>{approvedCount} đã duyệt</span>}
+              {postedCount>0&&<span style={{...s.statChip,background:"#e3f2fd",color:"#1565c0"}}>{postedCount} đã đăng</span>}
             </div>
           )}
         </div>
         <button style={s.settingsBtn} onClick={()=>setSettingsOpen(true)}>⚙️ Cài đặt</button>
       </nav>
 
-      {/* ── PROGRESS BAR ── */}
+      {/* PROGRESS BAR */}
       <div style={s.progressBar}>
         {STEPS.map((st,i)=>(
           <div key={st.id} style={s.progressItem} onClick={()=>projects.length>0||i===0?setStep(i):null}>
-            <div style={{...s.progressDot,background:i<step?"#43a047":i===step?"#1e88e5":"#e0e0e0",color:i<=step?"#fff":"#bbb",cursor:projects.length>0||i===0?"pointer":"default",boxShadow:i===step?"0 0 0 4px rgba(30,136,229,.2)":"none"}}>
+            <div style={{...s.progressDot,background:i<step?"#2e7d32":i===step?"#1565c0":"#e0e0e0",color:i<=step?"#fff":"#999",cursor:projects.length>0||i===0?"pointer":"default"}}>
               {i<step?"✓":st.icon}
             </div>
-            <span style={{...s.progressLabel,color:i===step?"#1e88e5":i<step?"#43a047":"#aaa",fontWeight:i===step?800:500}}>{st.label}</span>
-            {i<STEPS.length-1&&<div style={{...s.progressLine,background:i<step?"#43a047":"#e8eaf0"}}/>}
+            <span style={{...s.progressLabel,color:i===step?"#1565c0":i<step?"#2e7d32":"#999",fontWeight:i===step?700:400}}>{st.label}</span>
+            {i<STEPS.length-1&&<div style={{...s.progressLine,background:i<step?"#2e7d32":"#e0e0e0"}}/>}
           </div>
         ))}
       </div>
 
       <div style={s.page}>
 
-        {/* ────────────────────────────────────────────
-            BƯỚC 0: NGUỒN ẢNH
-        ──────────────────────────────────────────── */}
+        {/* ── BƯỚC 0: NGUỒN ẢNH ── */}
         {step===0&&(
           <div style={s.center}>
             <div style={s.heroBox}>
-              <div style={s.heroIconWrap}><span style={{fontSize:48}}>📂</span></div>
+              <div style={{fontSize:56,marginBottom:16}}>📂</div>
               <h1 style={s.heroTitle}>Kết nối nguồn ảnh</h1>
-              <p style={s.heroSub}>Chọn folder ảnh — AI tự viết caption & lên lịch đăng Facebook</p>
+              <p style={s.heroSub}>Chọn nguồn ảnh – AI tự động viết caption và lên lịch đăng</p>
 
+              {/* Toggle nguồn */}
               <div style={s.toggle}>
                 <button style={{...s.toggleBtn,...(sourceType==="local"?s.toggleActive:{})}} onClick={()=>setSourceType("local")}>💻 Folder máy tính</button>
                 <button style={{...s.toggleBtn,...(sourceType==="drive"?s.toggleActive:{})}} onClick={()=>setSourceType("drive")}>☁️ Google Drive</button>
@@ -337,34 +339,37 @@ export default function App() {
                 <>
                   <input ref={fileInputRef} type="file" webkitdirectory="true" multiple onChange={handleFolder} style={{display:"none"}}/>
                   <div style={s.dropZone} onClick={()=>fileInputRef.current.click()}>
-                    <div style={{fontSize:38,marginBottom:10}}>🗂</div>
-                    <div style={{fontWeight:700,fontSize:15,marginBottom:4,color:"#1a237e"}}>Click hoặc kéo thả folder dự án vào đây</div>
-                    <div style={{color:"#888",fontSize:12,marginBottom:18}}>Hỗ trợ JPG, PNG, WebP · Tự nhận diện tên dự án từ tên folder</div>
+                    <div style={{fontSize:40,marginBottom:8}}>🗂</div>
+                    <div style={{fontWeight:700,fontSize:16,marginBottom:4}}>Click hoặc kéo thả folder dự án vào đây</div>
+                    <div style={{color:"#888",fontSize:13,marginBottom:16}}>Hỗ trợ JPG, PNG, WebP • Tự nhận diện tên dự án từ tên folder</div>
                     <button style={s.btnPrimary}>📂 Chọn Folder từ máy tính</button>
                   </div>
-                  <p style={{fontSize:11,color:"#aaa",marginTop:8}}>✅ Miễn phí – không cần API, chạy ngay trên máy</p>
+                  <p style={{fontSize:12,color:"#888",marginTop:8}}>✅ Miễn phí – không cần API, chạy ngay trên máy</p>
                 </>
               ):(
-                <div style={{border:"1px solid #e0e0e0",borderRadius:12,padding:20,textAlign:"left"}}>
-                  <div style={{fontWeight:700,fontSize:14,marginBottom:4,color:"#1565c0"}}>☁️ Kết nối Google Drive</div>
-                  <div style={{fontSize:11,color:"#e65100",marginBottom:10,fontWeight:600}}>⚠️ Cần Google Drive API Key miễn phí</div>
-
-                  <div style={{background:"#f0f4ff",borderRadius:8,padding:12,fontSize:12,marginBottom:10}}>
-                    <div style={{fontWeight:700,marginBottom:6,color:"#1565c0"}}>📋 Bước 1 — Chia sẻ folder</div>
-                    <ol style={{paddingLeft:16,lineHeight:2,margin:0}}>
-                      <li>drive.google.com → chuột phải folder → <b>Chia sẻ</b></li>
-                      <li>Chọn <b>"Bất kỳ ai có đường liên kết"</b></li>
-                      <li>Copy link → dán bên dưới</li>
+                <div style={{border:"1px solid #e0e0e0",borderRadius:12,padding:24,textAlign:"left"}}>
+                  <div style={{fontWeight:700,fontSize:15,marginBottom:4,color:"#1565c0"}}>☁️ Kết nối Google Drive</div>
+                  <div style={{fontSize:12,color:"#e65100",marginBottom:12,fontWeight:600}}>⚠️ Lưu ý: Cách này dùng Google Drive API miễn phí, cần làm đúng theo từng bước</div>
+                  
+                  <div style={{background:"#f0f4ff",borderRadius:8,padding:14,fontSize:13,marginBottom:12}}>
+                    <div style={{fontWeight:700,marginBottom:8,color:"#1565c0"}}>📋 BƯỚC 1 — Chia sẻ folder Google Drive</div>
+                    <ol style={{paddingLeft:18,lineHeight:2.2,margin:0}}>
+                      <li>Mở <b>drive.google.com</b></li>
+                      <li>Chuột phải vào folder ảnh → chọn <b>"Chia sẻ"</b></li>
+                      <li>Bấm <b>"Thay đổi thành bất kỳ ai có đường liên kết"</b></li>
+                      <li>Copy link → dán vào ô bên dưới</li>
                     </ol>
                   </div>
 
-                  <div style={{background:"#e8f5e9",borderRadius:8,padding:12,fontSize:12,marginBottom:10}}>
-                    <div style={{fontWeight:700,marginBottom:6,color:"#2e7d32"}}>🔑 Bước 2 — Lấy Google API Key</div>
-                    <ol style={{paddingLeft:16,lineHeight:2,margin:0}}>
-                      <li>console.cloud.google.com → Tạo project</li>
-                      <li>Tìm <b>"Google Drive API"</b> → Enable</li>
-                      <li>Credentials → Create API Key → Copy</li>
+                  <div style={{background:"#e8f5e9",borderRadius:8,padding:14,fontSize:13,marginBottom:12}}>
+                    <div style={{fontWeight:700,marginBottom:8,color:"#2e7d32"}}>🔑 BƯỚC 2 — Lấy Google API Key (miễn phí)</div>
+                    <ol style={{paddingLeft:18,lineHeight:2.2,margin:0}}>
+                      <li>Vào <b>console.cloud.google.com</b></li>
+                      <li>Tạo project mới → tìm <b>"Google Drive API"</b> → bấm <b>Enable</b></li>
+                      <li>Vào <b>Credentials</b> → <b>Create Credentials</b> → chọn <b>API Key</b></li>
+                      <li>Copy API Key → dán vào ô bên dưới</li>
                     </ol>
+                    <div style={{marginTop:8,fontSize:11,color:"#555"}}>✅ Miễn phí hoàn toàn — Google Drive API free tier: 1 tỷ requests/ngày</div>
                   </div>
 
                   <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:12}}>
@@ -373,21 +378,23 @@ export default function App() {
                       <input style={s.inp} placeholder="https://drive.google.com/drive/folders/ABC123..."
                         onChange={e=>{
                           const match=e.target.value.match(/folders\/([a-zA-Z0-9_-]+)/);
-                          if(match) safeLocalSet("gdrive_folder_id", match[1]);
+                          if(match) localStorage.setItem("gdrive_folder_id", match[1]);
                         }}
-                        defaultValue={safeLocalGet("gdrive_folder_id")?`https://drive.google.com/drive/folders/${safeLocalGet("gdrive_folder_id")}`:""} />
+                        defaultValue={localStorage.getItem("gdrive_folder_id")?`https://drive.google.com/drive/folders/${localStorage.getItem("gdrive_folder_id")}`:""} 
+                      />
                     </div>
                     <div>
                       <label style={s.fieldLabel}>Google API Key</label>
                       <input style={s.inp} type="password" placeholder="AIzaSy..."
-                        onChange={e=>safeLocalSet("google_api_key", e.target.value)}
-                        defaultValue={safeLocalGet("google_api_key")} />
+                        onChange={e=>localStorage.setItem("google_api_key", e.target.value)}
+                        defaultValue={localStorage.getItem("google_api_key")||""}
+                      />
                     </div>
                   </div>
 
                   <button style={{...s.btnPrimary,background:"#4285f4",width:"100%"}} onClick={async()=>{
-                    const folderId = safeLocalGet("gdrive_folder_id");
-                    const apiKey = safeLocalGet("google_api_key");
+                    const folderId = localStorage.getItem("gdrive_folder_id");
+                    const apiKey = localStorage.getItem("google_api_key");
                     if(!folderId||!apiKey){showToast("Chưa nhập link folder hoặc API Key!","err");return;}
                     try{
                       const res=await fetch(`https://www.googleapis.com/drive/v3/files?q='${folderId}'+in+parents+and+mimeType+contains+'image/'&key=${apiKey}&fields=files(id,name,mimeType)&pageSize=50`);
@@ -395,7 +402,14 @@ export default function App() {
                       if(data.error){showToast("Lỗi: "+data.error.message,"err");return;}
                       if(!data.files||data.files.length===0){showToast("Không tìm thấy ảnh trong folder này","err");return;}
                       showToast(`✅ Tìm thấy ${data.files.length} ảnh! Đang load...`);
-                      const imgs = data.files.map(f=>({file:null,url:`https://drive.google.com/thumbnail?id=${f.id}&sz=w400`,driveId:f.id,name:f.name,selected:false}));
+                      // Build projects from Drive files
+                      const imgs = data.files.map(f=>({
+                        file:null,
+                        url:`https://drive.google.com/thumbnail?id=${f.id}&sz=w400`,
+                        driveId:f.id,
+                        name:f.name,
+                        selected:false
+                      }));
                       const autoSelect=Math.min(imgs.length,15);
                       imgs.slice(0,autoSelect).forEach(i=>{i.selected=true;});
                       const info=guessInfo(folderId);
@@ -417,7 +431,7 @@ export default function App() {
                 {["📁 Chọn nguồn","🤖 AI caption","✏️ Chỉnh sửa","📅 Lên lịch","🚀 Đăng FB"].map((t,i,a)=>(
                   <span key={i} style={{display:"flex",alignItems:"center",gap:4}}>
                     <span style={s.flowChip}>{t}</span>
-                    {i<a.length-1&&<span style={{color:"#bbb",fontSize:11}}>→</span>}
+                    {i<a.length-1&&<span style={{color:"#bbb"}}>→</span>}
                   </span>
                 ))}
               </div>
@@ -425,9 +439,7 @@ export default function App() {
           </div>
         )}
 
-        {/* ────────────────────────────────────────────
-            BƯỚC 1: AI CAPTION
-        ──────────────────────────────────────────── */}
+        {/* ── BƯỚC 1: AI CAPTION ── */}
         {step===1&&(
           <div>
             <div style={s.stepHeader}>
@@ -439,22 +451,22 @@ export default function App() {
             </div>
             <div style={s.projGrid}>
               {projects.map(proj=>(
-                <div key={proj.id} style={{...s.projCard,border:expandedProj===proj.id?"2px solid #1e88e5":"1px solid #e8eaf0"}}>
+                <div key={proj.id} style={{...s.projCard,border:expandedProj===proj.id?"2px solid #1565c0":"1px solid #e0e0e0"}}>
                   <div style={s.projCardHead} onClick={()=>setExpandedProj(expandedProj===proj.id?null:proj.id)}>
-                    <div style={{display:"flex",alignItems:"center",gap:10}}>
+                    <div style={{display:"flex",alignItems:"center",gap:8}}>
                       <div style={s.projThumb}>{proj.images[0]&&<img src={proj.images[0].url} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>}</div>
                       <div>
-                        <div style={{fontWeight:700,fontSize:13,color:"#1565c0"}}>{proj.name}</div>
-                        <div style={{fontSize:11,color:"#aaa"}}>{proj.images.filter(i=>i.selected).length} ảnh · {proj.day} {proj.time}</div>
+                        <div style={{fontWeight:700,fontSize:14,color:"#1565c0"}}>{proj.name}</div>
+                        <div style={{fontSize:12,color:"#888"}}>{proj.images.filter(i=>i.selected).length} ảnh • {proj.day} {proj.time}</div>
                       </div>
                     </div>
                     <div style={{display:"flex",alignItems:"center",gap:8}}>
-                      {proj.approved&&<span style={s.tagGreen}>✅</span>}
-                      <span style={{color:"#bbb",fontSize:11}}>{expandedProj===proj.id?"▲":"▼"}</span>
+                      {proj.approved&&<span style={s.tagGreen}>✅ Duyệt</span>}
+                      <span style={{color:"#999",fontSize:12}}>{expandedProj===proj.id?"▲":"▼"}</span>
                     </div>
                   </div>
                   {expandedProj===proj.id&&(
-                    <div style={{borderTop:"1px solid #f0f0f0",padding:"12px 14px"}}>
+                    <div style={{borderTop:"1px solid #f0f0f0",padding:"12px 16px"}}>
                       <div style={s.captionTabs}>
                         {Object.entries(CAPTION_LABELS).map(([k,l])=>(
                           <button key={k} style={{...s.captionTab,...(proj.activeCaption===k?s.captionTabActive:{})}}
@@ -476,9 +488,7 @@ export default function App() {
           </div>
         )}
 
-        {/* ────────────────────────────────────────────
-            BƯỚC 2: CHỈNH SỬA
-        ──────────────────────────────────────────── */}
+        {/* ── BƯỚC 2: CHỈNH SỬA ── */}
         {step===2&&(
           <div>
             <div style={s.stepHeader}>
@@ -490,29 +500,30 @@ export default function App() {
             </div>
 
             {projects.map(proj=>(
-              <div key={proj.id} style={{...s.card,opacity:proj.approved?0.75:1}}>
+              <div key={proj.id} style={{...s.card,opacity:proj.approved?0.7:1}}>
                 <div style={s.cardHead} onClick={()=>setExpandedProj(expandedProj===proj.id?null:proj.id)}>
                   <div style={{display:"flex",alignItems:"center",gap:10}}>
                     <div style={s.projThumb}>{proj.images[0]&&<img src={proj.images[0].url} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>}</div>
                     <div>
                       <span style={s.projTitle}>{proj.name}</span>
-                      <div style={{fontSize:11,color:"#aaa",marginTop:2}}>{proj.images.filter(i=>i.selected).length} ảnh · {proj.day} {proj.time}</div>
+                      <div style={{fontSize:12,color:"#888",marginTop:2}}>{proj.images.filter(i=>i.selected).length} ảnh • {proj.day} {proj.time}</div>
                     </div>
                     {proj.approved&&<span style={s.tagGreen}>✅ Đã duyệt</span>}
                   </div>
                   <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                    {/* GIỌNG VĂN — đổi tone tự động regen caption */}
                     <div onClick={e=>e.stopPropagation()}>
                       <label style={{...s.fieldLabel,display:"inline",marginRight:6}}>Giọng văn:</label>
                       <select style={s.sel} value={proj.tone} onChange={e=>handleToneChange(proj.id,e.target.value)}>
                         {Object.entries(BRAND_TONES).map(([k,v])=><option key={k} value={k}>{v.split("–")[0].trim()}</option>)}
                       </select>
                     </div>
-                    <span style={{color:"#bbb",fontSize:12}}>{expandedProj===proj.id?"▲ Thu":"▼ Mở"}</span>
+                    <span style={{color:"#999",fontSize:14}}>{expandedProj===proj.id?"▲ Thu gọn":"▼ Mở rộng"}</span>
                   </div>
                 </div>
 
                 {expandedProj===proj.id&&(
-                  <div style={{borderTop:"1px solid #f5f5f5",paddingTop:16}}>
+                  <div style={{borderTop:"1px solid #f0f0f0",paddingTop:16}}>
                     {/* INFO FORM */}
                     <div style={s.section}>
                       <div style={s.sectionTitleRow}>
@@ -526,7 +537,7 @@ export default function App() {
                           <div key={f.key} style={f.multiline?{gridColumn:"1/-1"}:{}}>
                             <label style={s.fieldLabel}>{f.label}</label>
                             {f.multiline?(
-                              <textarea style={{...s.infoInp,minHeight:68,resize:"vertical",fontFamily:"inherit",lineHeight:1.6}}
+                              <textarea style={{...s.infoInp,minHeight:72,resize:"vertical",fontFamily:"inherit",lineHeight:1.6}}
                                 value={proj.info?.[f.key]||""} placeholder={f.placeholder}
                                 onChange={e=>updateProj(proj.id,{info:{...proj.info,[f.key]:e.target.value}})}/>
                             ):(
@@ -538,20 +549,20 @@ export default function App() {
                       </div>
                     </div>
 
-                    {/* CHANNELS */}
+                    {/* CHANNELS — chỉ Facebook */}
                     <div style={s.section}>
-                      <div style={s.sectionTitle}>📡 Số bài đăng / tuần</div>
+                      <div style={s.sectionTitle}>📡 Số lượng bài đăng / tuần</div>
                       <div style={{display:"flex",gap:12,flexWrap:"wrap",marginTop:8}}>
                         <div style={s.channelBox}>
                           <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}>
-                            <span style={{fontSize:18}}>📘</span>
-                            <span style={{fontWeight:700,fontSize:13}}>Facebook</span>
+                            <span style={{fontSize:20}}>📘</span>
+                            <span style={{fontWeight:700,fontSize:14}}>Facebook</span>
                           </div>
                           <div style={{display:"flex",alignItems:"center",gap:10}}>
                             <button style={s.countBtn} onClick={()=>updateProj(proj.id,{channels:{...proj.channels,facebook:Math.max(0,(proj.channels?.facebook||1)-1)}})}>−</button>
-                            <span style={{fontWeight:800,fontSize:20,minWidth:24,textAlign:"center"}}>{proj.channels?.facebook??1}</span>
+                            <span style={{fontWeight:800,fontSize:20,minWidth:28,textAlign:"center"}}>{proj.channels?.facebook??1}</span>
                             <button style={s.countBtn} onClick={()=>updateProj(proj.id,{channels:{...proj.channels,facebook:(proj.channels?.facebook||1)+1}})}>+</button>
-                            <span style={{fontSize:11,color:"#888"}}>bài/tuần</span>
+                            <span style={{fontSize:12,color:"#888"}}>bài/tuần</span>
                           </div>
                         </div>
                       </div>
@@ -563,13 +574,13 @@ export default function App() {
                         <div style={s.sectionTitle}>🖼 Chọn ảnh ({proj.images.filter(i=>i.selected).length} đã chọn)</div>
                         <div style={s.imgGrid}>
                           {proj.images.map((img,idx)=>(
-                            <div key={idx} style={{...s.imgThumb,outline:img.selected?"3px solid #1e88e5":"3px solid transparent"}} onClick={()=>toggleImg(proj.id,idx)}>
+                            <div key={idx} style={{...s.imgThumb,outline:img.selected?"3px solid #1976d2":"3px solid transparent"}} onClick={()=>toggleImg(proj.id,idx)}>
                               <img src={img.url} alt="" style={s.imgInner}/>
                               {img.selected&&<div style={s.imgBadge}>✓</div>}
                             </div>
                           ))}
                         </div>
-                        <p style={{fontSize:10,color:"#bbb",marginTop:4}}>Click để chọn/bỏ chọn</p>
+                        <p style={{fontSize:11,color:"#999",marginTop:4}}>Click để chọn/bỏ chọn</p>
                       </div>
 
                       <div style={{flex:1,minWidth:0}}>
@@ -584,6 +595,8 @@ export default function App() {
                         </div>
                         <textarea style={s.textarea} value={proj.customCaption||""} rows={9}
                           onChange={e=>updateProj(proj.id,{customCaption:e.target.value})}/>
+
+                        {/* ADJUST BTNS */}
                         <div style={{marginTop:8}}>
                           <div style={s.fieldLabel}>Điều chỉnh caption:</div>
                           <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:4}}>
@@ -597,7 +610,7 @@ export default function App() {
                           </div>
                           {proj.pendingAdjust&&(
                             <div style={{display:"flex",alignItems:"center",gap:8,marginTop:8,padding:"8px 12px",background:"#e3f2fd",borderRadius:8}}>
-                              <span style={{fontSize:12,color:"#1565c0"}}>Đã chọn: <b>{ADJUST_BTNS.find(b=>b.key===proj.pendingAdjust)?.label}</b></span>
+                              <span style={{fontSize:13,color:"#1565c0"}}>Đã chọn: <b>{ADJUST_BTNS.find(b=>b.key===proj.pendingAdjust)?.label}</b></span>
                               <button style={{...s.btnSm,background:"#1565c0"}} disabled={loading}
                                 onClick={async()=>{
                                   setLoading(true);
@@ -615,15 +628,15 @@ export default function App() {
                       </div>
                     </div>
 
-                    {/* SCHEDULE PICKER */}
+                    {/* SCHEDULE PICKER inside Edit */}
                     <div style={{...s.section,marginTop:14}}>
                       <div style={s.sectionTitleRow}>
                         <div style={s.sectionTitle}>📅 Mốc thời gian đăng</div>
                         <button style={s.btnXs} onClick={()=>{const slot=randomSlot();updateProj(proj.id,slot);showToast("🎲 Random lịch mới!");}}>🎲 Random</button>
                       </div>
                       <div style={{fontSize:12,color:"#888",marginBottom:8}}>
-                        AI đề nghị: <b style={{color:"#1565c0"}}>{proj.day}</b> lúc <b style={{color:"#1565c0"}}>{proj.time}</b>
-                        <span style={{marginLeft:8,color:"#ccc",fontSize:11}}>({getNextDate(proj.day).toLocaleDateString("vi-VN",{day:"2-digit",month:"2-digit",year:"numeric"})})</span>
+                        🤖 AI đề nghị: <b style={{color:"#1565c0"}}>{proj.day}</b> lúc <b style={{color:"#1565c0"}}>{proj.time}</b>
+                        <span style={{marginLeft:8,color:"#aaa"}}>({getNextDate(proj.day).toLocaleDateString("vi-VN",{day:"2-digit",month:"2-digit",year:"numeric"})})</span>
                       </div>
                       <div style={{marginBottom:8}}>
                         <div style={s.fieldLabel}>Chọn ngày</div>
@@ -668,8 +681,8 @@ export default function App() {
                         </button>
                       )}
                       {proj.approved&&(
-                        <button style={s.btnXs} onClick={()=>{updateProj(proj.id,{approved:false});setPosts(prev=>prev.filter(p=>p.projId!==proj.id));showToast("↩️ Đã mở lại");}}>
-                          ↩️ Sửa
+                        <button style={{...s.btnXs}} onClick={()=>{updateProj(proj.id,{approved:false});setPosts(prev=>prev.filter(p=>p.projId!==proj.id));showToast("↩️ Đã mở lại");}}>
+                          ↩️ Sửa nội dung
                         </button>
                       )}
                     </div>
@@ -680,18 +693,16 @@ export default function App() {
           </div>
         )}
 
-        {/* ────────────────────────────────────────────
-            BƯỚC 3: LỊCH ĐĂNG
-        ──────────────────────────────────────────── */}
+        {/* ── BƯỚC 3: LỊCH ĐĂNG ── */}
         {step===3&&(
           <div>
             <div style={s.stepHeader}>
               <div>
                 <h2 style={s.h2}>📅 Lịch đăng</h2>
-                <p style={{color:"#888",fontSize:13,margin:"4px 0 0"}}>Chỉnh ngày giờ cho từng dự án, duyệt hàng loạt</p>
+                <p style={{color:"#888",fontSize:13,margin:"4px 0 0"}}>Chỉnh ngày giờ cho từng dự án, sau đó duyệt hàng loạt</p>
               </div>
               <div style={{display:"flex",gap:8}}>
-                <button style={{...s.btnSm,background:"#2e7d32",fontSize:13,padding:"8px 16px"}} onClick={approveAll}>
+                <button style={{...s.btnSm,background:"#2e7d32",fontSize:13,padding:"8px 18px"}} onClick={approveAll}>
                   ✅ Duyệt tất cả ({pendingCount})
                 </button>
                 <button style={{...s.btnPrimary,fontSize:13}} onClick={()=>setStep(4)}>🚀 Xem Ổ chờ →</button>
@@ -703,26 +714,34 @@ export default function App() {
                 <div key={proj.id} style={{...s.card,padding:"14px 18px"}}>
                   <div style={{display:"flex",alignItems:"flex-start",gap:12,flexWrap:"wrap"}}>
                     <div style={s.projThumb}>{proj.images[0]&&<img src={proj.images[0].url} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>}</div>
-                    <div style={{flex:1,minWidth:160}}>
+                    <div style={{flex:1,minWidth:180}}>
                       <div style={{fontWeight:700,fontSize:14,color:"#1565c0"}}>{proj.name}</div>
-                      <div style={{fontSize:11,color:"#aaa",marginTop:2}}>{proj.images.filter(i=>i.selected).length} ảnh · {proj.info?.brand||""}</div>
+                      <div style={{fontSize:12,color:"#888",marginTop:2}}>{proj.images.filter(i=>i.selected).length} ảnh • {proj.info?.brand||""}</div>
                     </div>
 
                     <div style={{flex:2,minWidth:300}}>
+                      {/* TẤT CẢ CÁC NGÀY */}
                       <div style={{marginBottom:8}}>
                         <div style={s.fieldLabel}>Ngày đăng</div>
                         <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
                           {ALL_DAYS.map(d=>(
-                            <button key={d} style={{...s.dayChip,...(proj.day===d?s.dayChipActive:{})}} onClick={()=>updateProj(proj.id,{day:d})}>{d}</button>
+                            <button key={d} style={{...s.dayChip,...(proj.day===d?s.dayChipActive:{})}} onClick={()=>updateProj(proj.id,{day:d})}>
+                              {d}
+                            </button>
                           ))}
                         </div>
                       </div>
+
+                      {/* GIỜ */}
                       <div>
                         <div style={s.fieldLabel}>Giờ đăng</div>
                         <div style={{display:"flex",gap:4,flexWrap:"wrap",alignItems:"center"}}>
                           {GOLDEN_TIMES.map(t=>(
-                            <button key={t} style={{...s.dayChip,...(proj.time===t?s.dayChipActive:{})}} onClick={()=>updateProj(proj.id,{time:t})}>{t}</button>
+                            <button key={t} style={{...s.dayChip,...(proj.time===t?s.dayChipActive:{})}} onClick={()=>updateProj(proj.id,{time:t})}>
+                              {t}
+                            </button>
                           ))}
+                          {/* GIỜ KHÁC */}
                           <div style={{display:"flex",alignItems:"center",gap:4}}>
                             <input type="time" style={{...s.sel,fontSize:12,padding:"4px 6px"}}
                               value={customTimeInput[proj.id]||""}
@@ -731,24 +750,27 @@ export default function App() {
                               onClick={()=>{if(customTimeInput[proj.id]){updateProj(proj.id,{time:customTimeInput[proj.id]});showToast("⏰ Giờ đã cập nhật!");}}}
                             >⏰ Giờ khác</button>
                           </div>
+                          {/* ĐĂNG NGAY */}
                           <button style={{...s.dayChip,background:"#e65100",color:"#fff",borderColor:"#e65100",fontWeight:700}}
                             onClick={()=>{
                               const now=new Date();
                               const hm=`${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
                               updateProj(proj.id,{time:hm,day:ALL_DAYS[now.getDay()===0?6:now.getDay()-1]});
                               showToast("⚡ Đặt giờ hiện tại!");
-                            }}>⚡ Ngay</button>
+                            }}>
+                            ⚡ Ngay bây giờ
+                          </button>
                         </div>
                         {!GOLDEN_TIMES.includes(proj.time)&&proj.time&&(
-                          <div style={{fontSize:10,color:"#e65100",marginTop:4}}>⏰ Giờ tùy chọn: <b>{proj.time}</b></div>
+                          <div style={{fontSize:11,color:"#e65100",marginTop:4}}>⏰ Giờ tùy chọn: <b>{proj.time}</b></div>
                         )}
                       </div>
                     </div>
 
                     <div style={{display:"flex",flexDirection:"column",gap:6,alignItems:"flex-end"}}>
-                      <button style={s.btnXs} onClick={()=>{const slot=randomSlot();updateProj(proj.id,slot);}}>🎲</button>
+                      <button style={s.btnXs} onClick={()=>{const slot=randomSlot();updateProj(proj.id,slot);}}>🎲 Random</button>
                       {proj.approved
-                        ?<span style={{...s.tagGreen,fontSize:11}}>✅ Duyệt rồi</span>
+                        ?<span style={{...s.tagGreen,fontSize:12}}>✅ Duyệt rồi</span>
                         :<button style={{...s.btnSm,background:"#2e7d32",fontSize:12}} onClick={()=>approvePost(proj)}>✅ Duyệt</button>
                       }
                     </div>
@@ -759,21 +781,19 @@ export default function App() {
           </div>
         )}
 
-        {/* ────────────────────────────────────────────
-            BƯỚC 4: ĐĂNG BÀI
-        ──────────────────────────────────────────── */}
+        {/* ── BƯỚC 4: ĐĂNG BÀI ── */}
         {step===4&&(
           <div>
             <div style={s.stepHeader}>
               <div>
                 <h2 style={s.h2}>🚀 Ổ chờ — Xem trước & Đăng</h2>
-                <p style={{color:"#888",fontSize:13,margin:"4px 0 0"}}>{posts.length} bài đã duyệt · {postedCount} đã đăng Facebook</p>
+                <p style={{color:"#888",fontSize:13,margin:"4px 0 0"}}>{posts.length} bài đã duyệt • {postedCount} đã đăng Facebook</p>
               </div>
             </div>
 
             {posts.length===0&&(
               <div style={s.emptyState}>
-                <div style={{fontSize:44}}>🗂</div>
+                <div style={{fontSize:48}}>🗂</div>
                 <p>Chưa có bài nào được duyệt.</p>
                 <button style={s.btnPrimary} onClick={()=>setStep(3)}>← Đặt lịch đăng</button>
               </div>
@@ -800,19 +820,19 @@ export default function App() {
                     {post.images.slice(0,4).map((img,i)=>(
                       <div key={i} style={{position:"relative",overflow:"hidden",background:"#f0f0f0",height:160}}>
                         <img src={img.url} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
-                        {i===3&&post.images.length>4&&<div style={{position:"absolute",inset:0,background:"rgba(0,0,0,.5)",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,fontWeight:800}}>+{post.images.length-4}</div>}
+                        {i===3&&post.images.length>4&&<div style={{position:"absolute",inset:0,background:"rgba(0,0,0,.5)",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,fontWeight:800}}>+{post.images.length-4}</div>}
                       </div>
                     ))}
                   </div>
                   <div style={s.fbActions}><span>👍 Thích</span><span>💬 Bình luận</span><span>↗️ Chia sẻ</span></div>
-                  <div style={{padding:"10px 12px",borderTop:"1px solid #f5f5f5",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
-                    <div style={{fontSize:11,color:"#888"}}><b>{post.day}</b> lúc <b>{post.time}</b> · {post.scheduledDate.toLocaleDateString("vi-VN")}</div>
+                  <div style={{padding:"10px 12px",borderTop:"1px solid #f0f0f0",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
+                    <div style={{fontSize:12,color:"#555"}}><b>{post.day}</b> lúc <b>{post.time}</b> · {post.scheduledDate.toLocaleDateString("vi-VN")}</div>
                     {!post.posted
                       ?<div style={{display:"flex",gap:8}}>
                           <button style={{...s.btnFB,background:"#e65100"}} onClick={()=>publishNow(post)} disabled={loading}>{loading?"⏳...":"⚡ Đăng ngay"}</button>
                           <button style={s.btnFB} onClick={()=>publishPost(post)} disabled={loading}>{loading?"⏳...":"🚀 Lên lịch"}</button>
                         </div>
-                      :<span style={{fontSize:11,color:"#2e7d32",fontWeight:700}}>✅ Post ID: {post.fbPostId}</span>
+                      :<span style={{fontSize:12,color:"#2e7d32",fontWeight:700}}>✅ Post ID: {post.fbPostId}</span>
                     }
                   </div>
                 </div>
@@ -822,10 +842,10 @@ export default function App() {
         )}
       </div>
 
-      {/* ── MODAL: ĐỔI LỊCH ── */}
+      {/* ── SCHEDULE EDIT MODAL ── */}
       {scheduleEdit&&(
         <div style={s.overlay} onClick={()=>setScheduleEdit(null)}>
-          <div style={s.modal} onClick={e=>e.stopPropagation()}>
+          <div style={s.settingsPanel} onClick={e=>e.stopPropagation()}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
               <h3 style={{margin:0,color:"#1565c0"}}>📅 Đổi lịch đăng</h3>
               <button style={s.btnXs} onClick={()=>setScheduleEdit(null)}>✕</button>
@@ -834,8 +854,11 @@ export default function App() {
               <div style={s.fieldLabel}>Chọn ngày</div>
               <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                 {ALL_DAYS.map(d=>(
-                  <button key={d} style={{...s.dayChip,...(scheduleEdit.day===d?s.dayChipActive:{})}}
-                    onClick={()=>setScheduleEdit(prev=>({...prev,day:d}))}>{d}</button>
+                  <button key={d}
+                    style={{...s.dayChip,...(scheduleEdit.day===d?s.dayChipActive:{})}}
+                    onClick={()=>setScheduleEdit(prev=>({...prev,day:d}))}>
+                    {d}
+                  </button>
                 ))}
               </div>
             </div>
@@ -843,15 +866,20 @@ export default function App() {
               <div style={s.fieldLabel}>Chọn giờ</div>
               <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
                 {GOLDEN_TIMES.map(t=>(
-                  <button key={t} style={{...s.dayChip,...(scheduleEdit.time===t?s.dayChipActive:{})}}
-                    onClick={()=>setScheduleEdit(prev=>({...prev,time:t}))}>{t}</button>
+                  <button key={t}
+                    style={{...s.dayChip,...(scheduleEdit.time===t?s.dayChipActive:{})}}
+                    onClick={()=>setScheduleEdit(prev=>({...prev,time:t}))}>
+                    {t}
+                  </button>
                 ))}
                 <input type="time" style={{...s.sel,fontSize:12}}
                   value={scheduleEdit.customTime||""}
                   onChange={e=>setScheduleEdit(prev=>({...prev,customTime:e.target.value}))}/>
                 {scheduleEdit.customTime&&(
                   <button style={{...s.btnXs,background:"#e3f2fd",color:"#1565c0",fontSize:11}}
-                    onClick={()=>setScheduleEdit(prev=>({...prev,time:prev.customTime}))}>⏰ Áp dụng</button>
+                    onClick={()=>setScheduleEdit(prev=>({...prev,time:prev.customTime}))}>
+                    ⏰ Áp dụng giờ này
+                  </button>
                 )}
                 <button style={{...s.dayChip,background:"#e65100",color:"#fff",borderColor:"#e65100",fontWeight:700}}
                   onClick={()=>{
@@ -863,7 +891,7 @@ export default function App() {
             </div>
             <div style={{background:"#f0f4ff",borderRadius:8,padding:10,marginBottom:16,fontSize:13}}>
               Lịch mới: <b style={{color:"#1565c0"}}>{scheduleEdit.day}</b> lúc <b style={{color:"#1565c0"}}>{scheduleEdit.time}</b>
-              <span style={{marginLeft:8,color:"#ccc",fontSize:11}}>({getNextDate(scheduleEdit.day).toLocaleDateString("vi-VN")})</span>
+              <span style={{marginLeft:8,color:"#aaa",fontSize:11}}>({getNextDate(scheduleEdit.day).toLocaleDateString("vi-VN")})</span>
             </div>
             <button style={{...s.btnApprove,width:"100%"}} onClick={()=>{
               const {projId,day,time}=scheduleEdit;
@@ -882,33 +910,33 @@ export default function App() {
               }
               setScheduleEdit(null);
               showToast("✅ Đã cập nhật lịch mới!");
-            }}>✅ Xác nhận lịch mới</button>
+            }}>
+              ✅ Xác nhận lịch mới
+            </button>
           </div>
         </div>
       )}
 
-      {/* ── MODAL: SETTINGS ── */}
+      {/* ── SETTINGS MODAL ── */}}
       {settingsOpen&&(
         <div style={s.overlay} onClick={()=>setSettingsOpen(false)}>
-          <div style={s.modal} onClick={e=>e.stopPropagation()}>
+          <div style={s.settingsPanel} onClick={e=>e.stopPropagation()}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
-              <h2 style={{margin:0,fontSize:17,color:"#1565c0"}}>⚙️ Cài đặt</h2>
+              <h2 style={{margin:0,fontSize:18,color:"#1565c0"}}>⚙️ Cài đặt</h2>
               <button style={s.btnXs} onClick={()=>setSettingsOpen(false)}>✕ Đóng</button>
             </div>
-
             <div style={s.settingGroup}>
               <h3 style={s.h3}>🏢 Tên Agency</h3>
               <input style={s.inp} value={agencyName} placeholder="VD: Blue Sky Corporation"
-                onChange={e=>{setAgencyName(e.target.value);safeLocalSet("agency_name",e.target.value);}}/>
+                onChange={e=>{setAgencyName(e.target.value);localStorage.setItem("agency_name",e.target.value);}}/>
             </div>
-
             <div style={{...s.settingGroup,marginTop:16}}>
-              <h3 style={s.h3}>🤖 Groq API Key — AI Caption (Miễn phí)</h3>
-              <div style={{background:"#f0f4ff",borderRadius:8,padding:10,marginBottom:8,fontSize:12}}>
+              <h3 style={s.h3}>🤖 Groq API Key (AI Caption – Miễn phí)</h3>
+              <div style={{background:"#f0f4ff",borderRadius:8,padding:12,marginBottom:10,fontSize:12}}>
                 Vào <b>console.groq.com</b> → API Keys → Create → copy key dạng <code style={s.code}>gsk_...</code>
               </div>
               <input style={s.inp} type="password" value={groqKey} placeholder="gsk_..."
-                onChange={e=>{setGroqKey(e.target.value);safeLocalSet("groq_key",e.target.value);}}/>
+                onChange={e=>{setGroqKey(e.target.value);localStorage.setItem("groq_key",e.target.value);}}/>
               <button style={{...s.btnSm,marginTop:8}} onClick={async()=>{
                 if(!groqKey){showToast("Chưa nhập key!","err");return;}
                 try{
@@ -918,34 +946,18 @@ export default function App() {
                 }catch(e){showToast("❌ Lỗi: "+e.message,"err");}
               }}>🔌 Kiểm tra kết nối</button>
             </div>
-
             <div style={{...s.settingGroup,marginTop:16}}>
               <h3 style={s.h3}>📘 Facebook Page</h3>
-              <div style={{background:"#e3f2fd",borderRadius:8,padding:10,marginBottom:10,fontSize:12}}>
-                <div style={{fontWeight:700,marginBottom:4,color:"#1565c0"}}>Cách lấy Page Token miễn phí:</div>
-                <ol style={{paddingLeft:16,lineHeight:1.9,margin:0}}>
-                  <li>developers.facebook.com → Tạo app loại <b>Business</b></li>
-                  <li>Thêm product <b>"Facebook Login for Business"</b></li>
-                  <li>Graph API Explorer → Add Permission: <code style={s.code}>pages_manage_posts</code></li>
-                  <li>Generate Token → Get Page Access Token → chọn Page → Copy</li>
-                </ol>
-              </div>
-              <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                <div>
-                  <label style={s.fieldLabel}>URL Fanpage</label>
+              <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                <div><label style={s.fieldLabel}>URL Fanpage</label>
                   <input style={s.inp} value={fbPageUrl} placeholder="facebook.com/TenPage"
-                    onChange={e=>{setFbPageUrl(e.target.value);safeLocalSet("fb_page_url",e.target.value);}}/>
-                </div>
-                <div>
-                  <label style={s.fieldLabel}>Page ID (hoặc để 'me')</label>
+                    onChange={e=>{setFbPageUrl(e.target.value);localStorage.setItem("fb_page_url",e.target.value);}}/></div>
+                <div><label style={s.fieldLabel}>Page ID</label>
                   <input style={s.inp} value={fbPageId} placeholder="123456789 hoặc me"
-                    onChange={e=>{setFbPageId(e.target.value);safeLocalSet("fb_page_id",e.target.value);}}/>
-                </div>
-                <div>
-                  <label style={s.fieldLabel}>Page Access Token</label>
+                    onChange={e=>{setFbPageId(e.target.value);localStorage.setItem("fb_page_id",e.target.value);}}/></div>
+                <div><label style={s.fieldLabel}>Page Access Token</label>
                   <input style={s.inp} type="password" value={fbPageToken} placeholder="EAABxxx..."
-                    onChange={e=>{setFbPageToken(e.target.value);safeLocalSet("fb_page_token",e.target.value);}}/>
-                </div>
+                    onChange={e=>{setFbPageToken(e.target.value);localStorage.setItem("fb_page_token",e.target.value);}}/></div>
                 <button style={s.btnSm} onClick={async()=>{
                   try{
                     const r=await fetch("https://graph.facebook.com/v19.0/me?access_token="+fbPageToken);
@@ -959,119 +971,88 @@ export default function App() {
         </div>
       )}
 
-      {/* ── TOAST ── */}
-      {toast&&<div style={{...s.toast,background:toast.type==="err"?"#b71c1c":"#1b5e20"}}>{toast.msg}</div>}
-
-      {/* ── LOADING OVERLAY ── */}
-      {loading&&(
-        <div style={s.overlay}>
-          <div style={s.spinner}>
-            <div style={{fontSize:32,marginBottom:8}}>🤖</div>
-            <div style={{fontWeight:700,color:"#1565c0"}}>AI đang xử lý...</div>
-            <div style={{fontSize:12,color:"#888",marginTop:4}}>Đang viết caption cho dự án của bạn</div>
-          </div>
-        </div>
-      )}
+      {toast&&<div style={{...s.toast,background:toast.type==="err"?"#c62828":"#1b5e20"}}>{toast.msg}</div>}
+      {loading&&<div style={s.overlay}><div style={s.spinner}>🤖 AI đang xử lý...</div></div>}
     </div>
   );
 }
 
-/* ── STYLES ── */
-const s = {
-  root:{fontFamily:"'Segoe UI',system-ui,sans-serif",minHeight:"100vh",background:"#f0f2f7",color:"#212121"},
-
-  nav:{background:"linear-gradient(135deg,#1565c0 0%,#0d47a1 100%)",color:"#fff",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 24px",flexWrap:"wrap",gap:8,boxShadow:"0 2px 12px rgba(21,101,192,.4)"},
-  navLeft:{display:"flex",alignItems:"center",gap:14,flexWrap:"wrap"},
-  logoWrap:{display:"flex",alignItems:"center",gap:8,padding:"13px 0"},
-  logoIcon:{fontSize:20},
-  brand:{fontWeight:800,fontSize:15,letterSpacing:"-0.3px"},
-  appTag:{background:"rgba(255,255,255,.18)",borderRadius:20,padding:"2px 10px",fontSize:10,fontWeight:700,letterSpacing:".5px",textTransform:"uppercase"},
+const s={
+  root:{fontFamily:"'Segoe UI',Arial,sans-serif",minHeight:"100vh",background:"#f4f6fa",color:"#212121"},
+  nav:{background:"#1565c0",color:"#fff",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 20px",flexWrap:"wrap",gap:8},
+  navLeft:{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"},
+  brand:{fontWeight:800,fontSize:16,padding:"14px 0",whiteSpace:"nowrap"},
   navStats:{display:"flex",gap:6,flexWrap:"wrap"},
-  statChip:{borderRadius:10,padding:"3px 10px",fontSize:10,fontWeight:700},
-  settingsBtn:{background:"rgba(255,255,255,.15)",border:"1px solid rgba(255,255,255,.25)",color:"#fff",padding:"7px 14px",borderRadius:7,cursor:"pointer",fontSize:12,fontWeight:700,transition:"background .2s"},
-
-  progressBar:{background:"#fff",borderBottom:"1px solid #e8eaf0",padding:"12px 24px",display:"flex",alignItems:"center",justifyContent:"center",gap:0,boxShadow:"0 1px 4px rgba(0,0,0,.05)"},
+  statChip:{background:"rgba(255,255,255,0.15)",color:"#fff",borderRadius:10,padding:"3px 10px",fontSize:11,fontWeight:600},
+  settingsBtn:{background:"rgba(255,255,255,0.15)",border:"none",color:"#fff",padding:"8px 14px",borderRadius:6,cursor:"pointer",fontSize:13,fontWeight:600},
+  progressBar:{background:"#fff",borderBottom:"1px solid #e0e0e0",padding:"14px 24px",display:"flex",alignItems:"center",justifyContent:"center"},
   progressItem:{display:"flex",alignItems:"center",gap:6,position:"relative"},
-  progressDot:{width:34,height:34,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:800,transition:"all .3s",flexShrink:0},
-  progressLabel:{fontSize:11,whiteSpace:"nowrap",marginRight:4,fontWeight:600},
-  progressLine:{width:28,height:2,margin:"0 4px",borderRadius:2,flexShrink:0},
-
-  page:{maxWidth:1020,margin:"0 auto",padding:"24px 20px"},
+  progressDot:{width:32,height:32,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700,transition:"all .3s",flexShrink:0},
+  progressLabel:{fontSize:12,whiteSpace:"nowrap",marginRight:4},
+  progressLine:{width:32,height:2,margin:"0 4px",borderRadius:2,flexShrink:0},
+  page:{maxWidth:1000,margin:"0 auto",padding:24},
   center:{display:"flex",justifyContent:"center"},
-
-  heroBox:{background:"#fff",borderRadius:18,padding:40,maxWidth:680,width:"100%",boxShadow:"0 4px 24px rgba(0,0,0,.08)",textAlign:"center"},
-  heroIconWrap:{width:80,height:80,background:"linear-gradient(135deg,#e3f2fd,#bbdefb)",borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 16px"},
-  heroTitle:{fontSize:22,fontWeight:900,color:"#1565c0",margin:"0 0 8px",letterSpacing:"-0.5px"},
-  heroSub:{color:"#888",marginBottom:24,lineHeight:1.6,fontSize:14},
+  heroBox:{background:"#fff",borderRadius:16,padding:40,maxWidth:680,width:"100%",boxShadow:"0 4px 20px rgba(0,0,0,.08)",textAlign:"center"},
+  heroTitle:{fontSize:24,fontWeight:800,color:"#1565c0",margin:"0 0 8px"},
+  heroSub:{color:"#666",marginBottom:24,lineHeight:1.6},
   toggle:{display:"inline-flex",background:"#f0f4ff",borderRadius:10,padding:4,marginBottom:24,gap:4},
-  toggleBtn:{padding:"8px 20px",border:"none",borderRadius:8,cursor:"pointer",fontWeight:700,fontSize:12,background:"transparent",color:"#666"},
-  toggleActive:{background:"#1565c0",color:"#fff",boxShadow:"0 2px 8px rgba(21,101,192,.3)"},
-  dropZone:{border:"2px dashed #90caf9",borderRadius:12,padding:30,cursor:"pointer",marginBottom:10,transition:"border-color .2s,background .2s"},
-  btnPrimary:{background:"linear-gradient(135deg,#1565c0,#1e88e5)",color:"#fff",border:"none",borderRadius:8,padding:"10px 24px",cursor:"pointer",fontWeight:800,fontSize:13,boxShadow:"0 2px 8px rgba(21,101,192,.3)"},
-  flowRow:{display:"flex",flexWrap:"wrap",gap:6,justifyContent:"center",marginTop:22},
-  flowChip:{background:"#e8f0fe",borderRadius:20,padding:"4px 12px",fontSize:11,fontWeight:700,color:"#1565c0"},
-
+  toggleBtn:{padding:"8px 20px",border:"none",borderRadius:8,cursor:"pointer",fontWeight:600,fontSize:13,background:"transparent",color:"#555"},
+  toggleActive:{background:"#1565c0",color:"#fff"},
+  dropZone:{border:"2px dashed #90caf9",borderRadius:12,padding:32,cursor:"pointer",marginBottom:12},
+  btnPrimary:{background:"#1565c0",color:"#fff",border:"none",borderRadius:8,padding:"10px 24px",cursor:"pointer",fontWeight:700,fontSize:14},
+  flowRow:{display:"flex",flexWrap:"wrap",gap:8,justifyContent:"center",marginTop:24},
+  flowChip:{background:"#e3f2fd",borderRadius:20,padding:"4px 12px",fontSize:12,fontWeight:600,color:"#1565c0"},
   stepHeader:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:20,gap:12,flexWrap:"wrap"},
-  h2:{fontSize:19,fontWeight:900,color:"#1a237e",margin:0,letterSpacing:"-0.4px"},
-  h3:{fontSize:13,fontWeight:700,margin:"0 0 8px",color:"#333"},
-
+  h2:{fontSize:20,fontWeight:800,color:"#1565c0",margin:0},
+  h3:{fontSize:14,fontWeight:700,margin:"0 0 10px"},
   projGrid:{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))",gap:12},
-  projCard:{background:"#fff",borderRadius:12,overflow:"hidden",boxShadow:"0 2px 10px rgba(0,0,0,.06)",transition:"box-shadow .2s"},
-  projCardHead:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 14px",cursor:"pointer"},
-  projThumb:{width:46,height:46,borderRadius:8,overflow:"hidden",background:"#e3f2fd",flexShrink:0},
-
-  card:{background:"#fff",borderRadius:14,padding:20,marginBottom:14,boxShadow:"0 2px 12px rgba(0,0,0,.07)"},
+  projCard:{background:"#fff",borderRadius:12,overflow:"hidden",boxShadow:"0 2px 8px rgba(0,0,0,.06)"},
+  projCardHead:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 16px",cursor:"pointer"},
+  projThumb:{width:48,height:48,borderRadius:8,overflow:"hidden",background:"#e3f2fd",flexShrink:0},
+  card:{background:"#fff",borderRadius:12,padding:20,marginBottom:16,boxShadow:"0 2px 10px rgba(0,0,0,.07)"},
   cardHead:{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8,cursor:"pointer"},
-  projTitle:{fontWeight:800,fontSize:15,color:"#1565c0"},
-  tagGreen:{background:"#e8f5e9",color:"#2e7d32",borderRadius:10,padding:"2px 9px",fontSize:10,fontWeight:800},
-
-  section:{background:"#f8f9ff",borderRadius:10,padding:14,marginBottom:12,border:"1px solid #e8eaf0"},
-  sectionTitle:{fontSize:10,fontWeight:800,color:"#5c6bc0",textTransform:"uppercase",letterSpacing:1,marginBottom:6},
+  projTitle:{fontWeight:800,fontSize:16,color:"#1565c0"},
+  tagGreen:{background:"#e8f5e9",color:"#2e7d32",borderRadius:10,padding:"2px 10px",fontSize:11,fontWeight:700},
+  section:{background:"#f8f9ff",borderRadius:10,padding:14,marginBottom:14,border:"1px solid #e3eaf7"},
+  sectionTitle:{fontSize:11,fontWeight:700,color:"#1565c0",textTransform:"uppercase",letterSpacing:.5,marginBottom:6},
   sectionTitleRow:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8},
-  fieldLabel:{fontSize:10,fontWeight:700,color:"#999",textTransform:"uppercase",letterSpacing:.5,display:"block",marginBottom:4},
+  fieldLabel:{fontSize:11,fontWeight:700,color:"#888",textTransform:"uppercase",letterSpacing:.5,display:"block",marginBottom:4},
   infoGrid:{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:8},
-  infoInp:{width:"100%",border:"1px solid #ddd",borderRadius:7,padding:"6px 9px",fontSize:12,boxSizing:"border-box",background:"#fff"},
-
-  channelBox:{background:"#fff",border:"1px solid #e8eaf0",borderRadius:10,padding:"11px 16px",minWidth:150},
-  countBtn:{width:28,height:28,border:"1px solid #ddd",borderRadius:6,cursor:"pointer",fontSize:16,fontWeight:700,background:"#f5f5f5"},
-
+  infoInp:{width:"100%",border:"1px solid #ddd",borderRadius:6,padding:"6px 8px",fontSize:12,boxSizing:"border-box"},
+  channelBox:{background:"#fff",border:"1px solid #e3eaf7",borderRadius:10,padding:"12px 18px",minWidth:160},
+  countBtn:{width:30,height:30,border:"1px solid #ddd",borderRadius:6,cursor:"pointer",fontSize:18,fontWeight:700,background:"#f5f5f5",display:"flex",alignItems:"center",justifyContent:"center"},
   twoCol:{display:"flex",gap:20,flexWrap:"wrap"},
   imgGrid:{display:"flex",flexWrap:"wrap",gap:6,maxWidth:360},
-  imgThumb:{position:"relative",borderRadius:7,overflow:"hidden",cursor:"pointer",width:70,height:70},
+  imgThumb:{position:"relative",borderRadius:8,overflow:"hidden",cursor:"pointer",width:72,height:72},
   imgInner:{width:"100%",height:"100%",objectFit:"cover",display:"block"},
-  imgBadge:{position:"absolute",top:3,right:3,background:"#1976d2",color:"#fff",borderRadius:"50%",width:17,height:17,display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:800},
-
+  imgBadge:{position:"absolute",top:3,right:3,background:"#1976d2",color:"#fff",borderRadius:"50%",width:18,height:18,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:800},
   captionTabs:{display:"flex",gap:4,marginBottom:6,flexWrap:"wrap"},
-  captionTab:{padding:"4px 9px",border:"1px solid #e0e0e0",borderRadius:6,cursor:"pointer",fontSize:11,fontWeight:700,background:"#f5f5f5",color:"#666"},
+  captionTab:{padding:"4px 10px",border:"1px solid #e0e0e0",borderRadius:6,cursor:"pointer",fontSize:12,fontWeight:600,background:"#f5f5f5",color:"#555"},
   captionTabActive:{background:"#1565c0",color:"#fff",borderColor:"#1565c0"},
-  captionPreview:{fontSize:12,lineHeight:1.7,color:"#444",background:"#f8f9ff",borderRadius:8,padding:10,maxHeight:110,overflow:"auto",whiteSpace:"pre-wrap"},
-  textarea:{width:"100%",border:"1px solid #e0e0e0",borderRadius:8,padding:10,fontSize:12,lineHeight:1.7,resize:"vertical",boxSizing:"border-box",fontFamily:"inherit"},
-  adjustBtn:{color:"#fff",border:"none",borderRadius:16,padding:"5px 12px",cursor:"pointer",fontWeight:700,fontSize:11},
-
-  dayChip:{padding:"4px 10px",border:"1px solid #ddd",borderRadius:14,cursor:"pointer",fontSize:11,fontWeight:700,background:"#f5f5f5",color:"#555"},
+  captionPreview:{fontSize:13,lineHeight:1.6,color:"#444",background:"#f8f9ff",borderRadius:8,padding:10,maxHeight:120,overflow:"auto",whiteSpace:"pre-wrap"},
+  textarea:{width:"100%",border:"1px solid #e0e0e0",borderRadius:8,padding:10,fontSize:13,lineHeight:1.7,resize:"vertical",boxSizing:"border-box",fontFamily:"inherit"},
+  adjustBtn:{color:"#fff",border:"none",borderRadius:16,padding:"5px 12px",cursor:"pointer",fontWeight:600,fontSize:12},
+  dayChip:{padding:"4px 10px",border:"1px solid #ddd",borderRadius:16,cursor:"pointer",fontSize:12,fontWeight:600,background:"#f5f5f5",color:"#555"},
   dayChipActive:{background:"#1565c0",color:"#fff",borderColor:"#1565c0"},
-  btnApprove:{background:"linear-gradient(135deg,#2e7d32,#43a047)",color:"#fff",border:"none",borderRadius:8,padding:"10px 20px",cursor:"pointer",fontWeight:800,fontSize:13,boxShadow:"0 2px 8px rgba(46,125,50,.3)"},
-  btnSm:{background:"#1565c0",color:"#fff",border:"none",borderRadius:7,padding:"6px 13px",cursor:"pointer",fontWeight:700,fontSize:11},
-  btnXs:{background:"#f5f5f5",color:"#444",border:"1px solid #ddd",borderRadius:6,padding:"4px 10px",cursor:"pointer",fontSize:11,fontWeight:600},
-
-  emptyState:{textAlign:"center",padding:60,color:"#bbb",background:"#fff",borderRadius:14},
-  previewGrid:{display:"flex",flexDirection:"column",gap:20,maxWidth:540,margin:"0 auto"},
-  fbCard:{background:"#fff",borderRadius:12,boxShadow:"0 2px 14px rgba(0,0,0,.1)",overflow:"hidden"},
+  btnApprove:{background:"#2e7d32",color:"#fff",border:"none",borderRadius:8,padding:"10px 20px",cursor:"pointer",fontWeight:700,fontSize:14},
+  btnSm:{background:"#1565c0",color:"#fff",border:"none",borderRadius:6,padding:"6px 14px",cursor:"pointer",fontWeight:600,fontSize:12},
+  btnXs:{background:"#f5f5f5",color:"#333",border:"1px solid #ddd",borderRadius:6,padding:"4px 10px",cursor:"pointer",fontSize:12,fontWeight:600},
+  emptyState:{textAlign:"center",padding:60,color:"#999",background:"#fff",borderRadius:12},
+  previewGrid:{display:"flex",flexDirection:"column",gap:20,maxWidth:560,margin:"0 auto"},
+  fbCard:{background:"#fff",borderRadius:12,boxShadow:"0 2px 12px rgba(0,0,0,.1)",overflow:"hidden"},
   fbHeader:{display:"flex",alignItems:"flex-start",gap:10,padding:"12px 14px"},
-  fbAvatar:{width:40,height:40,background:"linear-gradient(135deg,#1565c0,#1e88e5)",borderRadius:"50%",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:17,flexShrink:0},
-  fbPageName:{fontWeight:800,fontSize:13},
-  fbMeta:{fontSize:10,color:"#bbb",display:"flex",alignItems:"center",gap:4,flexWrap:"wrap"},
-  fbCaption:{width:"100%",border:"none",borderTop:"1px solid #f5f5f5",borderBottom:"1px solid #f5f5f5",padding:"10px 14px",fontSize:13,lineHeight:1.6,resize:"none",fontFamily:"inherit",boxSizing:"border-box",outline:"none",background:"#fafafa"},
-  fbActions:{display:"flex",gap:18,borderTop:"1px solid #f0f0f0",borderBottom:"1px solid #f0f0f0",padding:"8px 14px",fontSize:12,color:"#666"},
-  btnFB:{background:"#1877f2",color:"#fff",border:"none",borderRadius:7,padding:"8px 16px",cursor:"pointer",fontWeight:800,fontSize:12},
-
-  overlay:{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:999},
-  modal:{background:"#fff",borderRadius:16,padding:28,width:"100%",maxWidth:520,maxHeight:"90vh",overflowY:"auto",boxShadow:"0 12px 50px rgba(0,0,0,.25)"},
-  spinner:{background:"#fff",borderRadius:14,padding:"28px 40px",textAlign:"center",boxShadow:"0 8px 40px rgba(0,0,0,.2)"},
-
+  fbAvatar:{width:40,height:40,background:"#1565c0",borderRadius:"50%",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:18,flexShrink:0},
+  fbPageName:{fontWeight:700,fontSize:14},
+  fbMeta:{fontSize:11,color:"#999",display:"flex",alignItems:"center",gap:4,flexWrap:"wrap"},
+  fbCaption:{width:"100%",border:"none",borderTop:"1px solid #f5f5f5",borderBottom:"1px solid #f5f5f5",padding:"10px 14px",fontSize:14,lineHeight:1.6,resize:"none",fontFamily:"inherit",boxSizing:"border-box",outline:"none",background:"#fafafa"},
+  fbActions:{display:"flex",gap:16,borderTop:"1px solid #f0f0f0",borderBottom:"1px solid #f0f0f0",padding:"8px 14px"},
+  btnFB:{background:"#1877f2",color:"#fff",border:"none",borderRadius:6,padding:"8px 16px",cursor:"pointer",fontWeight:700,fontSize:13},
+  settingsPanel:{background:"#fff",borderRadius:14,padding:28,width:"100%",maxWidth:520,maxHeight:"90vh",overflowY:"auto",boxShadow:"0 8px 40px rgba(0,0,0,.2)"},
   settingGroup:{borderBottom:"1px solid #f0f0f0",paddingBottom:16},
-  sel:{border:"1px solid #ddd",borderRadius:6,padding:"5px 8px",fontSize:12,cursor:"pointer"},
-  inp:{width:"100%",border:"1px solid #ddd",borderRadius:7,padding:"8px 10px",fontSize:12,boxSizing:"border-box"},
-  code:{background:"#e8eaf6",padding:"1px 6px",borderRadius:4,fontSize:10,fontFamily:"monospace"},
-  toast:{position:"fixed",bottom:24,left:"50%",transform:"translateX(-50%)",color:"#fff",padding:"12px 24px",borderRadius:10,fontWeight:800,fontSize:13,zIndex:1000,maxWidth:"80vw",textAlign:"center",boxShadow:"0 4px 20px rgba(0,0,0,.3)"},
+  sel:{border:"1px solid #ddd",borderRadius:6,padding:"6px 8px",fontSize:13,cursor:"pointer"},
+  inp:{width:"100%",border:"1px solid #ddd",borderRadius:6,padding:"8px 10px",fontSize:13,boxSizing:"border-box"},
+  code:{background:"#e8eaf6",padding:"1px 5px",borderRadius:4,fontSize:11,fontFamily:"monospace"},
+  toast:{position:"fixed",bottom:24,left:"50%",transform:"translateX(-50%)",color:"#fff",padding:"12px 24px",borderRadius:10,fontWeight:700,fontSize:14,zIndex:1000,maxWidth:"80vw",textAlign:"center",boxShadow:"0 4px 20px rgba(0,0,0,.25)"},
+  overlay:{position:"fixed",inset:0,background:"rgba(0,0,0,.45)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:999},
+  spinner:{background:"#fff",borderRadius:12,padding:"20px 32px",fontSize:16,fontWeight:700},
 };
