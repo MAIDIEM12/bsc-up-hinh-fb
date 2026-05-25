@@ -258,31 +258,75 @@ export default function App() {
     showToast("✅ Đã duyệt "+unapproved.length+" dự án!");
   };
 
-  const publishPost = async (post) => {
-    if (!fbPageToken) { showToast("Chưa cấu hình Facebook Token!","err"); return; }
-    setLoading(true);
-    try {
-      const body=new URLSearchParams({message:post.customCaption,access_token:fbPageToken});
-      const res=await fetch("https://graph.facebook.com/v19.0/me/feed",{method:"POST",body});
-      const data=await res.json();
-      if(data.id){updatePost(post.id,{fbPostId:data.id,posted:true});showToast("🚀 Đã đăng lên Facebook!");}
-      else showToast("FB lỗi: "+(data.error?.message||"Không rõ"),"err");
-    } catch(e){showToast("Lỗi: "+e.message,"err");}
-    setLoading(false);
-  };
-
-  const publishNow = async (post) => {
-    if (!fbPageToken) { showToast("Chưa cấu hình Facebook Token!","err"); return; }
-    setLoading(true);
-    try {
-      const body=new URLSearchParams({message:post.customCaption,access_token:fbPageToken});
-      const res=await fetch("https://graph.facebook.com/v19.0/me/feed",{method:"POST",body});
-      const data=await res.json();
-      if(data.id){updatePost(post.id,{fbPostId:data.id,posted:true});showToast("⚡ Đã đăng ngay lên Facebook!");}
-      else showToast("FB lỗi: "+(data.error?.message||"Không rõ"),"err");
-    } catch(e){showToast("Lỗi: "+e.message,"err");}
-    setLoading(false);
-  };
+  const uploadPhotoToFB = async (imageFile, imageUrl, token, pageId) => {
+  // Nếu là file local (từ máy tính)
+  if (imageFile) {
+    const formData = new FormData();
+    formData.append("source", imageFile);
+    formData.append("published", "false");
+    formData.append("access_token", token);
+    const res = await fetch(`https://graph.facebook.com/v19.0/${pageId}/photos`, {
+      method: "POST",
+      body: formData,
+    });
+    const data = await res.json();
+    if (data.id) return data.id;
+    throw new Error(data.error?.message || "Upload ảnh thất bại");
+  }
+  // Nếu là ảnh từ URL (Google Drive)
+  const params = new URLSearchParams({
+    url: imageUrl,
+    published: "false",
+    access_token: token,
+  });
+  const res = await fetch(`https://graph.facebook.com/v19.0/${pageId}/photos`, {
+    method: "POST",
+    body: params,
+  });
+  const data = await res.json();
+  if (data.id) return data.id;
+  throw new Error(data.error?.message || "Upload ảnh URL thất bại");
+};
+ 
+const doPublish = async (post, isNow = false) => {
+  if (!fbPageToken) { showToast("Chưa cấu hình Facebook Token!", "err"); return; }
+  const pageId = fbPageId || "me";
+  setLoading(true);
+  try {
+    // Bước 1: Upload từng ảnh (unpublished)
+    showToast("⏳ Đang upload " + post.images.length + " ảnh...");
+    const photoIds = [];
+    for (const img of post.images) {
+      const id = await uploadPhotoToFB(img.file || null, img.url, fbPageToken, pageId);
+      photoIds.push(id);
+    }
+ 
+    // Bước 2: Đăng bài kèm ảnh
+    const body = new URLSearchParams();
+    body.append("message", post.customCaption);
+    body.append("access_token", fbPageToken);
+    photoIds.forEach(id => body.append("attached_media[]", JSON.stringify({ media_fbid: id })));
+ 
+    const res = await fetch(`https://graph.facebook.com/v19.0/${pageId}/feed`, {
+      method: "POST",
+      body,
+    });
+    const data = await res.json();
+    if (data.id) {
+      updatePost(post.id, { fbPostId: data.id, posted: true });
+      showToast(isNow ? "⚡ Đã đăng ngay lên Facebook!" : "🚀 Đã đăng lên Facebook!");
+    } else {
+      showToast("FB lỗi: " + (data.error?.message || "Không rõ"), "err");
+    }
+  } catch (e) {
+    showToast("Lỗi: " + e.message, "err");
+  }
+  setLoading(false);
+};
+ 
+const publishPost = async (post) => doPublish(post, false);
+const publishNow  = async (post) => doPublish(post, true);
+ 
 
   const pendingCount = projects.filter(p=>!p.approved).length;
   const approvedCount = projects.filter(p=>p.approved).length;
