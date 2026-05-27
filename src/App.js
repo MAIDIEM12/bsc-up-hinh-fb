@@ -155,15 +155,16 @@ export default function App() {
   const [expandedProj, setExpandedProj] = useState(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [customTimeInput, setCustomTimeInput] = useState({});
-  const [scheduleEdit, setScheduleEdit] = useState(null); // {projId, day, time} - for editing approved posts
-  const [pendingSchedule, setPendingSchedule] = useState({}); // temp day/time before confirm
+  const [scheduleEdit, setScheduleEdit] = useState(null);
+  const [pendingSchedule, setPendingSchedule] = useState({});
   const [groqKey, setGroqKey] = useState(()=>localStorage.getItem("groq_key")||"")
-  // Set defaults if not already set
+
   useEffect(()=>{
     if(!localStorage.getItem("gdrive_folder_id")) localStorage.setItem("gdrive_folder_id","1oxxpjvAdQxe0pRYwFbPxoSDFnUQpyCRf");
     if(!localStorage.getItem("fb_page_url")) localStorage.setItem("fb_page_url","https://www.facebook.com/BlueSkyCorporation.BelowTheLine.Agency");
     if(!localStorage.getItem("agency_name")) localStorage.setItem("agency_name","Blue Sky Corporation");
   },[]);
+
   const [fbPageId, setFbPageId] = useState(()=>localStorage.getItem("fb_page_id")||"");
   const [fbPageToken, setFbPageToken] = useState(()=>localStorage.getItem("fb_page_token")||"");
   const [fbPageUrl, setFbPageUrl] = useState(()=>localStorage.getItem("fb_page_url")||"https://www.facebook.com/BlueSkyCorporation.BelowTheLine.Agency");
@@ -172,7 +173,15 @@ export default function App() {
 
   const showToast = (msg, type="ok") => { setToast({msg,type}); setTimeout(()=>setToast(null),4000); };
 
-  // Khi đổi tone → tự động regen tất cả captions
+  // ✅ HÀM ĐẶT GIỜ TÙY CHỈNH — sửa lỗi nút cũ không bỏ highlight
+  const applyCustomTime = (projId) => {
+    const val = customTimeInput[projId];
+    if (!val) { showToast("Chưa nhập giờ!","err"); return; }
+    // Cập nhật time của project — vì time không còn trùng GOLDEN_TIMES nên tất cả nút cũ tự bỏ highlight
+    updateProj(projId, { time: val });
+    showToast("⏰ Đã đặt giờ: " + val);
+  };
+
   const handleToneChange = async (projId, newTone) => {
     updateProj(projId, {tone: newTone});
     const proj = projects.find(p=>p.id===projId);
@@ -243,9 +252,11 @@ export default function App() {
     showToast("📅 Đã duyệt! "+proj.day+" "+proj.time);
   };
 
+  // ✅ SỬA approveAll — đếm đúng số bài chưa duyệt
   const approveAll = () => {
     const unapproved = projects.filter(p=>!p.approved);
     if (!unapproved.length) { showToast("Tất cả đã được duyệt!","ok"); return; }
+    let count = 0;
     unapproved.forEach(proj=>{
       const selected = proj.images.filter(i=>i.selected);
       if (!selected.length) return;
@@ -254,83 +265,129 @@ export default function App() {
       const post={...proj,id:Date.now()+Math.random(),projId:proj.id,scheduledDate:d,images:selected,posted:false};
       setPosts(prev=>[...prev.filter(p=>p.projId!==proj.id),post]);
       updateProj(proj.id,{approved:true});
+      count++;
     });
-    showToast("✅ Đã duyệt "+unapproved.length+" dự án!");
+    showToast("✅ Đã duyệt "+count+" dự án!");
   };
 
   const uploadPhotoToFB = async (imageFile, imageUrl, token, pageId) => {
-  // Nếu là file local (từ máy tính)
-  if (imageFile) {
-    const formData = new FormData();
-    formData.append("source", imageFile);
-    formData.append("published", "false");
-    formData.append("access_token", token);
+    if (imageFile) {
+      const formData = new FormData();
+      formData.append("source", imageFile);
+      formData.append("published", "false");
+      formData.append("access_token", token);
+      const res = await fetch(`https://graph.facebook.com/v19.0/${pageId}/photos`, {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json();
+      if (data.id) return data.id;
+      throw new Error(data.error?.message || "Upload ảnh thất bại");
+    }
+    const params = new URLSearchParams({
+      url: imageUrl,
+      published: "false",
+      access_token: token,
+    });
     const res = await fetch(`https://graph.facebook.com/v19.0/${pageId}/photos`, {
       method: "POST",
-      body: formData,
+      body: params,
     });
     const data = await res.json();
     if (data.id) return data.id;
-    throw new Error(data.error?.message || "Upload ảnh thất bại");
-  }
-  // Nếu là ảnh từ URL (Google Drive)
-  const params = new URLSearchParams({
-    url: imageUrl,
-    published: "false",
-    access_token: token,
-  });
-  const res = await fetch(`https://graph.facebook.com/v19.0/${pageId}/photos`, {
-    method: "POST",
-    body: params,
-  });
-  const data = await res.json();
-  if (data.id) return data.id;
-  throw new Error(data.error?.message || "Upload ảnh URL thất bại");
-};
- 
-const doPublish = async (post, isNow = false) => {
-  if (!fbPageToken) { showToast("Chưa cấu hình Facebook Token!", "err"); return; }
-  const pageId = fbPageId || "me";
-  setLoading(true);
-  try {
-    // Bước 1: Upload từng ảnh (unpublished)
-    showToast("⏳ Đang upload " + post.images.length + " ảnh...");
-    const photoIds = [];
-    for (const img of post.images) {
-      const id = await uploadPhotoToFB(img.file || null, img.url, fbPageToken, pageId);
-      photoIds.push(id);
+    throw new Error(data.error?.message || "Upload ảnh URL thất bại");
+  };
+
+  const doPublish = async (post, isNow = false) => {
+    if (!fbPageToken) { showToast("Chưa cấu hình Facebook Token!", "err"); return; }
+    const pageId = fbPageId || "me";
+    setLoading(true);
+    try {
+      showToast("⏳ Đang upload " + post.images.length + " ảnh...");
+      const photoIds = [];
+      for (const img of post.images) {
+        const id = await uploadPhotoToFB(img.file || null, img.url, fbPageToken, pageId);
+        photoIds.push(id);
+      }
+      const body = new URLSearchParams();
+      body.append("message", post.customCaption);
+      body.append("access_token", fbPageToken);
+      photoIds.forEach(id => body.append("attached_media[]", JSON.stringify({ media_fbid: id })));
+      const res = await fetch(`https://graph.facebook.com/v19.0/${pageId}/feed`, {
+        method: "POST",
+        body,
+      });
+      const data = await res.json();
+      if (data.id) {
+        updatePost(post.id, { fbPostId: data.id, posted: true });
+        showToast(isNow ? "⚡ Đã đăng ngay lên Facebook!" : "🚀 Đã đăng lên Facebook!");
+      } else {
+        showToast("FB lỗi: " + (data.error?.message || "Không rõ"), "err");
+      }
+    } catch (e) {
+      showToast("Lỗi: " + e.message, "err");
     }
- 
-    // Bước 2: Đăng bài kèm ảnh
-    const body = new URLSearchParams();
-    body.append("message", post.customCaption);
-    body.append("access_token", fbPageToken);
-    photoIds.forEach(id => body.append("attached_media[]", JSON.stringify({ media_fbid: id })));
- 
-    const res = await fetch(`https://graph.facebook.com/v19.0/${pageId}/feed`, {
-      method: "POST",
-      body,
-    });
-    const data = await res.json();
-    if (data.id) {
-      updatePost(post.id, { fbPostId: data.id, posted: true });
-      showToast(isNow ? "⚡ Đã đăng ngay lên Facebook!" : "🚀 Đã đăng lên Facebook!");
-    } else {
-      showToast("FB lỗi: " + (data.error?.message || "Không rõ"), "err");
-    }
-  } catch (e) {
-    showToast("Lỗi: " + e.message, "err");
-  }
-  setLoading(false);
-};
- 
-const publishPost = async (post) => doPublish(post, false);
-const publishNow  = async (post) => doPublish(post, true);
- 
+    setLoading(false);
+  };
+
+  const publishPost = async (post) => doPublish(post, false);
+  const publishNow  = async (post) => doPublish(post, true);
 
   const pendingCount = projects.filter(p=>!p.approved).length;
   const approvedCount = projects.filter(p=>p.approved).length;
   const postedCount = posts.filter(p=>p.posted).length;
+
+  // ✅ COMPONENT GIỜ ĐĂNG — dùng chung cho bước 2 và bước 3
+  const TimePickerRow = ({ proj }) => (
+    <div style={{display:"flex",gap:4,flexWrap:"wrap",alignItems:"center"}}>
+      {GOLDEN_TIMES.map(t=>(
+        <button key={t}
+          style={{
+            ...s.dayChip,
+            // ✅ CHỈ highlight nếu time khớp VÀ không có giờ tùy chỉnh đang được set
+            ...(proj.time===t ? s.dayChipActive : {})
+          }}
+          onClick={()=>{
+            // ✅ Khi bấm nút giờ cố định: xóa customTimeInput để ô nhập trống
+            setCustomTimeInput(prev=>({...prev,[proj.id]:""}));
+            updateProj(proj.id,{time:t});
+          }}>
+          {t}
+        </button>
+      ))}
+      {/* Ô nhập giờ tùy chỉnh */}
+      <div style={{display:"flex",alignItems:"center",gap:4,
+        border: !GOLDEN_TIMES.includes(proj.time) && proj.time ? "2px solid #1565c0" : "1px solid #ddd",
+        borderRadius:8, padding:"2px 6px", background: !GOLDEN_TIMES.includes(proj.time) && proj.time ? "#e3f2fd" : "#fff"
+      }}>
+        <input type="time" style={{border:"none",outline:"none",fontSize:12,padding:"2px",background:"transparent",width:90}}
+          value={customTimeInput[proj.id] ?? (GOLDEN_TIMES.includes(proj.time) ? "" : proj.time)}
+          onChange={e=>setCustomTimeInput(prev=>({...prev,[proj.id]:e.target.value}))}
+        />
+        <button style={{...s.btnXs,background:"#e3f2fd",color:"#1565c0",fontSize:11,border:"none",padding:"3px 8px"}}
+          onClick={()=>applyCustomTime(proj.id)}>
+          ⏰ Giờ khác
+        </button>
+      </div>
+      {/* Nút đăng ngay */}
+      <button style={{...s.dayChip,background:"#e65100",color:"#fff",borderColor:"#e65100",fontWeight:700}}
+        onClick={()=>{
+          const now=new Date();
+          const hm=`${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
+          setCustomTimeInput(prev=>({...prev,[proj.id]:""}));
+          updateProj(proj.id,{time:hm,day:ALL_DAYS[now.getDay()===0?6:now.getDay()-1]});
+          showToast("⚡ Đặt giờ hiện tại: "+hm);
+        }}>
+        ⚡ Ngay bây giờ
+      </button>
+      {/* Hiển thị giờ đang chọn nếu là giờ tùy chỉnh */}
+      {!GOLDEN_TIMES.includes(proj.time) && proj.time && (
+        <span style={{fontSize:11,color:"#1565c0",fontWeight:700,background:"#e3f2fd",borderRadius:8,padding:"3px 10px"}}>
+          ✅ Đã chọn: {proj.time}
+        </span>
+      )}
+    </div>
+  );
 
   return (
     <div style={s.root}>
@@ -373,7 +430,6 @@ const publishNow  = async (post) => doPublish(post, true);
               <h1 style={s.heroTitle}>Kết nối nguồn ảnh</h1>
               <p style={s.heroSub}>Chọn nguồn ảnh – AI tự động viết caption và lên lịch đăng</p>
 
-              {/* Toggle nguồn */}
               <div style={s.toggle}>
                 <button style={{...s.toggleBtn,...(sourceType==="local"?s.toggleActive:{})}} onClick={()=>setSourceType("local")}>💻 Folder máy tính</button>
                 <button style={{...s.toggleBtn,...(sourceType==="drive"?s.toggleActive:{})}} onClick={()=>setSourceType("drive")}>☁️ Google Drive</button>
@@ -394,7 +450,6 @@ const publishNow  = async (post) => doPublish(post, true);
                 <div style={{border:"1px solid #e0e0e0",borderRadius:12,padding:24,textAlign:"left"}}>
                   <div style={{fontWeight:700,fontSize:15,marginBottom:4,color:"#1565c0"}}>☁️ Kết nối Google Drive</div>
                   <div style={{fontSize:12,color:"#e65100",marginBottom:12,fontWeight:600}}>⚠️ Lưu ý: Cách này dùng Google Drive API miễn phí, cần làm đúng theo từng bước</div>
-                  
                   <div style={{background:"#f0f4ff",borderRadius:8,padding:14,fontSize:13,marginBottom:12}}>
                     <div style={{fontWeight:700,marginBottom:8,color:"#1565c0"}}>📋 BƯỚC 1 — Chia sẻ folder Google Drive</div>
                     <ol style={{paddingLeft:18,lineHeight:2.2,margin:0}}>
@@ -404,7 +459,6 @@ const publishNow  = async (post) => doPublish(post, true);
                       <li>Copy link → dán vào ô bên dưới</li>
                     </ol>
                   </div>
-
                   <div style={{background:"#e8f5e9",borderRadius:8,padding:14,fontSize:13,marginBottom:12}}>
                     <div style={{fontWeight:700,marginBottom:8,color:"#2e7d32"}}>🔑 BƯỚC 2 — Lấy Google API Key (miễn phí)</div>
                     <ol style={{paddingLeft:18,lineHeight:2.2,margin:0}}>
@@ -415,7 +469,6 @@ const publishNow  = async (post) => doPublish(post, true);
                     </ol>
                     <div style={{marginTop:8,fontSize:11,color:"#555"}}>✅ Miễn phí hoàn toàn — Google Drive API free tier: 1 tỷ requests/ngày</div>
                   </div>
-
                   <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:12}}>
                     <div>
                       <label style={s.fieldLabel}>Link Google Drive Folder</label>
@@ -435,7 +488,6 @@ const publishNow  = async (post) => doPublish(post, true);
                       />
                     </div>
                   </div>
-
                   <button style={{...s.btnPrimary,background:"#4285f4",width:"100%"}} onClick={async()=>{
                     const folderId = localStorage.getItem("gdrive_folder_id");
                     const apiKey = localStorage.getItem("google_api_key");
@@ -446,7 +498,6 @@ const publishNow  = async (post) => doPublish(post, true);
                       if(data.error){showToast("Lỗi: "+data.error.message,"err");return;}
                       if(!data.files||data.files.length===0){showToast("Không tìm thấy ảnh trong folder này","err");return;}
                       showToast(`✅ Tìm thấy ${data.files.length} ảnh! Đang load...`);
-                      // Build projects from Drive files
                       const imgs = data.files.map(f=>({
                         file:null,
                         url:`https://drive.google.com/thumbnail?id=${f.id}&sz=w400`,
@@ -555,7 +606,6 @@ const publishNow  = async (post) => doPublish(post, true);
                     {proj.approved&&<span style={s.tagGreen}>✅ Đã duyệt</span>}
                   </div>
                   <div style={{display:"flex",gap:8,alignItems:"center"}}>
-                    {/* GIỌNG VĂN — đổi tone tự động regen caption */}
                     <div onClick={e=>e.stopPropagation()}>
                       <label style={{...s.fieldLabel,display:"inline",marginRight:6}}>Giọng văn:</label>
                       <select style={s.sel} value={proj.tone} onChange={e=>handleToneChange(proj.id,e.target.value)}>
@@ -568,7 +618,6 @@ const publishNow  = async (post) => doPublish(post, true);
 
                 {expandedProj===proj.id&&(
                   <div style={{borderTop:"1px solid #f0f0f0",paddingTop:16}}>
-                    {/* INFO FORM */}
                     <div style={s.section}>
                       <div style={s.sectionTitleRow}>
                         <div style={s.sectionTitle}>📋 Thông tin dự án</div>
@@ -593,7 +642,6 @@ const publishNow  = async (post) => doPublish(post, true);
                       </div>
                     </div>
 
-                    {/* CHANNELS — chỉ Facebook */}
                     <div style={s.section}>
                       <div style={s.sectionTitle}>📡 Số lượng bài đăng / tuần</div>
                       <div style={{display:"flex",gap:12,flexWrap:"wrap",marginTop:8}}>
@@ -612,7 +660,6 @@ const publishNow  = async (post) => doPublish(post, true);
                       </div>
                     </div>
 
-                    {/* IMAGES + CAPTION */}
                     <div style={s.twoCol}>
                       <div style={{flex:"0 0 auto"}}>
                         <div style={s.sectionTitle}>🖼 Chọn ảnh ({proj.images.filter(i=>i.selected).length} đã chọn)</div>
@@ -640,7 +687,6 @@ const publishNow  = async (post) => doPublish(post, true);
                         <textarea style={s.textarea} value={proj.customCaption||""} rows={9}
                           onChange={e=>updateProj(proj.id,{customCaption:e.target.value})}/>
 
-                        {/* ADJUST BTNS */}
                         <div style={{marginTop:8}}>
                           <div style={s.fieldLabel}>Điều chỉnh caption:</div>
                           <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:4}}>
@@ -672,14 +718,14 @@ const publishNow  = async (post) => doPublish(post, true);
                       </div>
                     </div>
 
-                    {/* SCHEDULE PICKER inside Edit */}
+                    {/* SCHEDULE PICKER inside Edit — dùng TimePickerRow */}
                     <div style={{...s.section,marginTop:14}}>
                       <div style={s.sectionTitleRow}>
                         <div style={s.sectionTitle}>📅 Mốc thời gian đăng</div>
                         <button style={s.btnXs} onClick={()=>{const slot=randomSlot();updateProj(proj.id,slot);showToast("🎲 Random lịch mới!");}}>🎲 Random</button>
                       </div>
                       <div style={{fontSize:12,color:"#888",marginBottom:8}}>
-                        🤖 AI đề nghị: <b style={{color:"#1565c0"}}>{proj.day}</b> lúc <b style={{color:"#1565c0"}}>{proj.time}</b>
+                        Đang chọn: <b style={{color:"#1565c0"}}>{proj.day}</b> lúc <b style={{color:"#1565c0"}}>{proj.time}</b>
                         <span style={{marginLeft:8,color:"#aaa"}}>({getNextDate(proj.day).toLocaleDateString("vi-VN",{day:"2-digit",month:"2-digit",year:"numeric"})})</span>
                       </div>
                       <div style={{marginBottom:8}}>
@@ -692,29 +738,10 @@ const publishNow  = async (post) => doPublish(post, true);
                       </div>
                       <div>
                         <div style={s.fieldLabel}>Chọn giờ</div>
-                        <div style={{display:"flex",gap:4,flexWrap:"wrap",alignItems:"center"}}>
-                          {GOLDEN_TIMES.map(t=>(
-                            <button key={t} style={{...s.dayChip,...(proj.time===t?s.dayChipActive:{})}} onClick={()=>updateProj(proj.id,{time:t})}>{t}</button>
-                          ))}
-                          <input type="time" style={{...s.sel,fontSize:12,padding:"4px 6px"}}
-                            value={customTimeInput[proj.id]||""}
-                            onChange={e=>setCustomTimeInput(prev=>({...prev,[proj.id]:e.target.value}))}/>
-                          <button style={{...s.btnXs,background:"#e3f2fd",color:"#1565c0",fontSize:11}}
-                            onClick={()=>{if(customTimeInput[proj.id]){updateProj(proj.id,{time:customTimeInput[proj.id]});showToast("⏰ Giờ đã cập nhật!");}}}>
-                            ⏰ Giờ khác
-                          </button>
-                          <button style={{...s.dayChip,background:"#e65100",color:"#fff",borderColor:"#e65100",fontWeight:700}}
-                            onClick={()=>{
-                              const now=new Date();
-                              const hm=`${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
-                              updateProj(proj.id,{time:hm,day:ALL_DAYS[now.getDay()===0?6:now.getDay()-1]});
-                              showToast("⚡ Đặt giờ hiện tại!");
-                            }}>⚡ Ngay</button>
-                        </div>
+                        <TimePickerRow proj={proj} />
                       </div>
                     </div>
 
-                    {/* APPROVE */}
                     <div style={{display:"flex",gap:10,marginTop:16}}>
                       <button style={{...s.btnApprove,flex:1,opacity:proj.approved?0.5:1}} onClick={()=>approvePost(proj)} disabled={proj.approved}>
                         {proj.approved?"✅ Đã duyệt":"✅ Duyệt & lên lịch →"}
@@ -746,6 +773,7 @@ const publishNow  = async (post) => doPublish(post, true);
                 <p style={{color:"#888",fontSize:13,margin:"4px 0 0"}}>Chỉnh ngày giờ cho từng dự án, sau đó duyệt hàng loạt</p>
               </div>
               <div style={{display:"flex",gap:8}}>
+                {/* ✅ SỬA: hiển thị số pending đúng */}
                 <button style={{...s.btnSm,background:"#2e7d32",fontSize:13,padding:"8px 18px"}} onClick={approveAll}>
                   ✅ Duyệt tất cả ({pendingCount})
                 </button>
@@ -764,7 +792,6 @@ const publishNow  = async (post) => doPublish(post, true);
                     </div>
 
                     <div style={{flex:2,minWidth:300}}>
-                      {/* TẤT CẢ CÁC NGÀY */}
                       <div style={{marginBottom:8}}>
                         <div style={s.fieldLabel}>Ngày đăng</div>
                         <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
@@ -775,39 +802,10 @@ const publishNow  = async (post) => doPublish(post, true);
                           ))}
                         </div>
                       </div>
-
-                      {/* GIỜ */}
                       <div>
                         <div style={s.fieldLabel}>Giờ đăng</div>
-                        <div style={{display:"flex",gap:4,flexWrap:"wrap",alignItems:"center"}}>
-                          {GOLDEN_TIMES.map(t=>(
-                            <button key={t} style={{...s.dayChip,...(proj.time===t?s.dayChipActive:{})}} onClick={()=>updateProj(proj.id,{time:t})}>
-                              {t}
-                            </button>
-                          ))}
-                          {/* GIỜ KHÁC */}
-                          <div style={{display:"flex",alignItems:"center",gap:4}}>
-                            <input type="time" style={{...s.sel,fontSize:12,padding:"4px 6px"}}
-                              value={customTimeInput[proj.id]||""}
-                              onChange={e=>setCustomTimeInput(prev=>({...prev,[proj.id]:e.target.value}))}/>
-                            <button style={{...s.btnXs,background:"#e3f2fd",color:"#1565c0",fontSize:11}}
-                              onClick={()=>{if(customTimeInput[proj.id]){updateProj(proj.id,{time:customTimeInput[proj.id]});showToast("⏰ Giờ đã cập nhật!");}}}
-                            >⏰ Giờ khác</button>
-                          </div>
-                          {/* ĐĂNG NGAY */}
-                          <button style={{...s.dayChip,background:"#e65100",color:"#fff",borderColor:"#e65100",fontWeight:700}}
-                            onClick={()=>{
-                              const now=new Date();
-                              const hm=`${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
-                              updateProj(proj.id,{time:hm,day:ALL_DAYS[now.getDay()===0?6:now.getDay()-1]});
-                              showToast("⚡ Đặt giờ hiện tại!");
-                            }}>
-                            ⚡ Ngay bây giờ
-                          </button>
-                        </div>
-                        {!GOLDEN_TIMES.includes(proj.time)&&proj.time&&(
-                          <div style={{fontSize:11,color:"#e65100",marginTop:4}}>⏰ Giờ tùy chọn: <b>{proj.time}</b></div>
-                        )}
+                        {/* ✅ Dùng TimePickerRow — fix lỗi nút cũ không bỏ highlight */}
+                        <TimePickerRow proj={proj} />
                       </div>
                     </div>
 
@@ -912,26 +910,32 @@ const publishNow  = async (post) => doPublish(post, true);
                 {GOLDEN_TIMES.map(t=>(
                   <button key={t}
                     style={{...s.dayChip,...(scheduleEdit.time===t?s.dayChipActive:{})}}
-                    onClick={()=>setScheduleEdit(prev=>({...prev,time:t}))}>
+                    onClick={()=>setScheduleEdit(prev=>({...prev,time:t,customTime:""}))}>
                     {t}
                   </button>
                 ))}
-                <input type="time" style={{...s.sel,fontSize:12}}
-                  value={scheduleEdit.customTime||""}
-                  onChange={e=>setScheduleEdit(prev=>({...prev,customTime:e.target.value}))}/>
-                {scheduleEdit.customTime&&(
-                  <button style={{...s.btnXs,background:"#e3f2fd",color:"#1565c0",fontSize:11}}
-                    onClick={()=>setScheduleEdit(prev=>({...prev,time:prev.customTime}))}>
-                    ⏰ Áp dụng giờ này
+                <div style={{display:"flex",alignItems:"center",gap:4,
+                  border: !GOLDEN_TIMES.includes(scheduleEdit.time) ? "2px solid #1565c0" : "1px solid #ddd",
+                  borderRadius:8, padding:"2px 6px"
+                }}>
+                  <input type="time" style={{border:"none",outline:"none",fontSize:12,padding:"2px",width:90}}
+                    value={scheduleEdit.customTime||""}
+                    onChange={e=>setScheduleEdit(prev=>({...prev,customTime:e.target.value}))}/>
+                  <button style={{...s.btnXs,background:"#e3f2fd",color:"#1565c0",fontSize:11,border:"none"}}
+                    onClick={()=>{if(scheduleEdit.customTime) setScheduleEdit(prev=>({...prev,time:prev.customTime}))}}>
+                    ⏰ Áp dụng
                   </button>
-                )}
+                </div>
                 <button style={{...s.dayChip,background:"#e65100",color:"#fff",borderColor:"#e65100",fontWeight:700}}
                   onClick={()=>{
                     const now=new Date();
                     const hm=`${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
-                    setScheduleEdit(prev=>({...prev,time:hm,day:ALL_DAYS[now.getDay()===0?6:now.getDay()-1]}));
+                    setScheduleEdit(prev=>({...prev,time:hm,customTime:"",day:ALL_DAYS[now.getDay()===0?6:now.getDay()-1]}));
                   }}>⚡ Ngay</button>
               </div>
+              {!GOLDEN_TIMES.includes(scheduleEdit.time) && scheduleEdit.time && (
+                <div style={{fontSize:11,color:"#1565c0",fontWeight:700,marginTop:6}}>✅ Giờ đã chọn: {scheduleEdit.time}</div>
+              )}
             </div>
             <div style={{background:"#f0f4ff",borderRadius:8,padding:10,marginBottom:16,fontSize:13}}>
               Lịch mới: <b style={{color:"#1565c0"}}>{scheduleEdit.day}</b> lúc <b style={{color:"#1565c0"}}>{scheduleEdit.time}</b>
@@ -961,7 +965,7 @@ const publishNow  = async (post) => doPublish(post, true);
         </div>
       )}
 
-      {/* ── SETTINGS MODAL ── */}}
+      {/* ── SETTINGS MODAL ── */}
       {settingsOpen&&(
         <div style={s.overlay} onClick={()=>setSettingsOpen(false)}>
           <div style={s.settingsPanel} onClick={e=>e.stopPropagation()}>
